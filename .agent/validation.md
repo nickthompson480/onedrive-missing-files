@@ -84,3 +84,7 @@ Live Windows signed-in browser acceptance remains pending.
 
 Independent file failures continue other copies; storage denial cancels peer
 streams and stops queued work. Both behaviors have dedicated tests.
+
+All four hosted CI jobs passed at e3d5458 (run 35644305355). Published v1.3.0
+ZIP and checksum were downloaded and verified against the reviewed local build;
+archive integrity and seven-file allowlist passed.

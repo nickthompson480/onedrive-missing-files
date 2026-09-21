@@ -34,3 +34,10 @@ tags: []
 - [x] Add throttled per-file progress, stages, activity and searchable issues tabs.
 - [x] Validate synthetic browser interactions and hosted cross-platform checks.
 - [x] Publish v1.2.0 and verify downloaded release assets.
+
+## Version 1.3 parallel downloads
+
+- [x] Add 1–5 workers, shared budget reservation and group cancellation.
+- [x] Add selector and individual active-file progress cards.
+- [x] Validate concurrency, error isolation, cancellation and synthetic browser UI.
+- [x] Pass hosted checks, publish v1.3.0 and verify downloaded release assets.
