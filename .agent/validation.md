@@ -124,3 +124,8 @@ named lookup fails, successful child download and preserved original, verified
 one-file ZIP export, locked controls during export, stopped stalled stream and
 ZIP issue reporting. These checks do not reproduce the real Windows provider
 failure. Hosted checks and v1.5 release verification are still pending.
+
+The first Windows hosted run caught a test-probe encoding mismatch: Python's
+Windows console encoding was decoded as UTF-8 by Node. The ZIP filename itself
+passed Python's comparison. The probe now emits ASCII-escaped JSON, matching the
+production helper, before rerunning hosted checks.

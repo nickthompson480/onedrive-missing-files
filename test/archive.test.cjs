@@ -45,7 +45,7 @@ test("single-file ZIP interoperates with Python, preserves Unicode path and has 
       process.platform === "win32" ? "python" : "python3",
       [
         "-c",
-        'import sys,zipfile,json; z=zipfile.ZipFile(sys.argv[1]); assert len(z.infolist())==1; assert z.read(z.infolist()[0])==b"abc"; m=json.loads(z.comment); assert z.infolist()[0].filename==m["path"][1:]; print(z.comment.decode())',
+        'import sys,zipfile,json; z=zipfile.ZipFile(sys.argv[1]); assert len(z.infolist())==1; assert z.read(z.infolist()[0])==b"abc"; m=json.loads(z.comment); assert z.infolist()[0].filename==m["path"][1:]; print(json.dumps(m))',
         file,
       ],
       { encoding: "utf8" },
