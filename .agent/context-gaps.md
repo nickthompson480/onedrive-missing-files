@@ -13,3 +13,10 @@ tags: [context, discovery]
 - Native Windows and Edge browser acceptance is pending.
 - Personal Vault, package internals, shortcut targets, and other excluded namespaces are not covered.
 - Website API stability and cross-application file-creation races cannot be guaranteed.
+
+- 2026-09-21: User confirmed the Windows destination is inside OneDrive; the
+  visible sync arrows indicate syncing/pending status. Explorer visibility does
+  not establish ordinary browser filesystem access or hydration. Need an
+  outside-OneDrive comparison test before attributing local folder-creation
+  NotFoundError to sync or Files On-Demand. No Windows machine access is available
+  in this task; this finding comes from user reports and screenshots.
