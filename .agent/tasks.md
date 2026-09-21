@@ -14,6 +14,7 @@ tags: []
 - [x] Document installation, privacy, limits, and platform acceptance status.
 - [x] Add a bounded three-file test and guard closing the panel during disk work.
 - [x] Validate tests, formatting, artifact contents, and archive integrity locally.
-- [ ] Publish the repository and verify hosted CI.
-- [ ] Publish v1.0.0 with ZIP and SHA-256 checksum assets.
+- [x] Publish the repository and verify hosted CI.
+- [x] Publish v1.0.0 with ZIP and SHA-256 checksum assets; download and verify
+  the published payload against the reviewed local archive.
 - [ ] Complete native Windows Chrome/Edge browser acceptance.

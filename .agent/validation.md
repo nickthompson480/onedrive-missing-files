@@ -25,6 +25,7 @@ tags: [validation]
 
 ## Gaps
 
-Initial hosted CI passed on macOS and Linux (Node 22 and 24). Windows checkout
-converted text to CRLF and failed formatting; `.gitattributes` now enforces LF.
-The Windows rerun and public release verification are pending. Native Windows/Edge sign-in, folder permission, long-path behavior, and live downloads need acceptance testing. Simulated filesystem tests do not prove native browser behavior. Keep the destination idle; browser APIs do not guarantee atomic create-if-absent against unrelated applications.
+Hosted CI passes on Windows/macOS/Linux with Node 24 and on Linux with Node 22.
+`.gitattributes` enforces consistent LF checkouts. The published v1.0.0 ZIP was
+downloaded, checksum-verified, and compared byte-for-byte with the local build.
+The archive rebuild is deterministic. Native Windows/Edge sign-in, folder permission, long-path behavior, and live downloads need acceptance testing. Simulated filesystem tests do not prove native browser behavior. Keep the destination idle; browser APIs do not guarantee atomic create-if-absent against unrelated applications.
