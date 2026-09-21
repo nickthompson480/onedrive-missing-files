@@ -1,6 +1,6 @@
 {
   "name": "onedrive-missing-files",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "private": true,
   "description": "Inventory OneDrive Personal and download missing files into a chosen local folder.",
   "license": "MIT",

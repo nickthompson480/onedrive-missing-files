@@ -49,3 +49,12 @@ tags: []
 - [x] Add issue-type filters, privacy-filtered detail export, and separate-folder recovery.
 - [x] Verify fault injection, preservation, overlap rejection, and synthetic browser UI.
 - [x] Verify hosted checks and publish v1.4.0; download and verify release assets.
+
+## Version 1.5 automatic folders and single-file ZIPs
+
+- [x] Discover existing folders automatically without individual selection.
+- [x] Resolve parents before fetching; group unavailable-parent failures.
+- [x] Export exactly one restricted original file per bounded, verified ZIP.
+- [x] Add native preview, missing-only restore, source dates and verified cleanup.
+- [x] Test archive interoperability, preservation and synthetic browser flows.
+- [ ] Pass hosted checks, publish v1.5.0 and verify downloaded release assets.

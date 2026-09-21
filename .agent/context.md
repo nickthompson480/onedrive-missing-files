@@ -19,3 +19,8 @@ The OneDrive website API is undocumented and can change. The browser session and
 `native/repair-dates.py` is the optional offline Python 3.11+ helper; it verifies
 file contents and sets timestamps through native handles, never network calls
 or file-content writes. Native tests live in `test/test_repair_dates.py`.
+
+`src/archive-tools.js` exports bounded one-file ZIPs for browser-restricted types.
+`native/restore-zip.py` validates and restores missing originals offline, sharing
+native path/date primitives with repair-dates.py; it optionally cleans up only
+verified input ZIPs. See docs/zip-recovery.md.

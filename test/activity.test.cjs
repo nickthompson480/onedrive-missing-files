@@ -43,6 +43,11 @@ test("diagnostics explain different causes, sanitize fields and distinguish reco
     /not a OneDrive HTTP 404/,
   );
   assert.match(advice("TypeError", "request_download"), /network transfer/);
+  assert.match(
+    advice("NotFoundError", "create_local_folder"),
+    /No individual folder selection is required/,
+  );
+  assert.match(advice("cancelled", undefined, "ZIP export"), /Completed ZIPs/);
   const rows = collectIssues({
     result: {
       folder: "Recovery",

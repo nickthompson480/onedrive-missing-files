@@ -294,6 +294,7 @@ test("browser controls bound sample downloads and prevent closing during writes"
   const browser = {
     showDirectoryPicker: async () => root,
     __oneDriveInventoryReport: report(entries),
+    __oneDriveInventoryLibrary: require("../src/inventory.js"),
   };
   let release;
   const gate = new Promise((resolve) => {
@@ -787,12 +788,9 @@ test("each save failure records its exact operation and cancels the response wit
     assert.equal(r.issues[0].code, "NotFoundError");
     assert.equal(r.downloaded, 0);
     if (
-      [
-        "create_local_folder",
-        "create_local_file",
-        "read_local_file",
-        "open_write_stream",
-      ].includes(step)
+      ["create_local_file", "read_local_file", "open_write_stream"].includes(
+        step,
+      )
     )
       assert.equal(cancelled, true);
     assert.doesNotMatch(JSON.stringify(r), /secret-url-token/);
@@ -861,4 +859,75 @@ test("recovery copies only mismatches into a separate tree and preserves both or
       /choose_separate_recovery_folder/,
     );
   }
+});
+
+test("existing folders use read lookup, not creation, and listing handles recover failed named lookup", async () => {
+  const root = new Directory(),
+    folder = new Directory("Folder");
+  folder.kind = "directory";
+  root.getDirectoryHandle = async () => {
+    throw error("NotFoundError");
+  };
+  root.entries = async function* () {
+    yield ["Folder", folder];
+  };
+  const inventory = report([
+    row("d", "/Folder", "folder", 0),
+    row("f", "/Folder/file"),
+  ]);
+  const plan = await checkDisk({ root, report: inventory });
+  assert.equal(plan.items[0].status, "present");
+  const result = await populate({
+    root,
+    plan,
+    fetchFile: async () => response("abc"),
+  });
+  assert.equal(result.downloaded, 1);
+  assert.equal(folder.entries.get("file").data.toString(), "abc");
+});
+
+test("an inaccessible parent produces one issue and prevents dependent downloads", async () => {
+  const root = new Directory();
+  const inventory = report([
+    row("d", "/Bad", "folder", 0),
+    row("1", "/Bad/a"),
+    row("2", "/Bad/b"),
+    row("3", "/good"),
+  ]);
+  const plan = await checkDisk({ root, report: inventory });
+  const original = root.getDirectoryHandle.bind(root);
+  root.getDirectoryHandle = async (name, options) => {
+    if (name === "Bad" && options?.create) throw error("NotFoundError");
+    return original(name, options);
+  };
+  let requests = 0;
+  const result = await populate({
+    root,
+    plan,
+    fetchFile: async () => {
+      requests++;
+      return response("abc");
+    },
+  });
+  assert.equal(requests, 1);
+  assert.equal(result.downloaded, 1);
+  assert.equal(result.issues.length, 1);
+  assert.equal(result.issues[0].blockedFiles, 2);
+});
+
+test("failed listing is an access conflict and does not create folders", async () => {
+  const root = new Directory();
+  root.getDirectoryHandle = async () => {
+    throw error("NotFoundError");
+  };
+  root.entries = async function* () {
+    throw error("NotAllowedError");
+  };
+  const plan = await checkDisk({
+    root,
+    report: report([row("d", "/Existing", "folder", 0)]),
+  });
+  assert.equal(plan.items[0].status, "conflict");
+  assert.equal(plan.items[0].operation, "list_local_folder");
+  assert.equal(root.creates, 0);
 });

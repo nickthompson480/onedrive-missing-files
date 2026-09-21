@@ -11,14 +11,19 @@ tags: []
 # Project State
 
 - Goal: Maintain a portable OneDrive Personal inventory and missing-file copier.
-- Current work: v1.4 Windows diagnostics and separate-folder recovery released and verified.
-- Validation: 48 JavaScript tests pass. Native helper tests pass on Windows
-  (13), macOS and Linux (12 plus one Windows-only skip). Synthetic browser
-  metadata export, stop, and resume passed. Native Windows browser acceptance
-  remains pending; no real user files were modified during v1.1 validation.
-- Release: https://github.com/nickthompson480/onedrive-missing-files/releases/tag/v1.4.0
-  includes the ZIP and SHA-256 checksum. The published download is byte-identical
-  to the reviewed local build and passes archive integrity checks.
-- Next action: test a fresh Windows destination outside OneDrive with Check disk and Test 3 small files. User confirmed the failing destination is OneDrive-managed; screenshots show NotFoundError during local folder creation although Explorer displays that folder. Sync/cloud-file involvement is a hypothesis, not a proven root cause.
+- Current work: v1.5 automatic folder discovery and one-file ZIP recovery implemented.
+- Validation: 55 JavaScript tests pass, including JavaScript ZIP → native
+  restoration/cleanup interoperability. Native tests on the development Mac:
+  18 pass, two Windows-only skips. Synthetic browser acceptance passed automatic
+  directory discovery, preserved originals, ZIP export, cancellation and issue UI.
+- Published release remains v1.4.0 until hosted checks and v1.5 release verification.
+- Next action: run hosted Windows/macOS/Linux checks, publish v1.5.0 and verify
+  its downloaded assets. Then retry Check disk and downloads on the affected
+  Windows destination; no per-folder connection is required.
 - Boundaries: source GET-only; preserve existing local file contents. Metadata
-  restoration is separately authorized, previews by default, and verifies hashes. No account data, inventories, credentials, or signed URLs belong in Git.
+  restoration previews by default and verifies hashes. Native ZIP cleanup is
+  limited to explicit input archives after verified restoration. No account data,
+  inventories, credentials, or signed URLs belong in Git.
+- Unresolved: exact live Windows folder-access cause is unconfirmed; OneDrive
+  sync/cloud-file involvement remains a hypothesis. The native helper rejects
+  reparse/placeholder paths and may require a plain recovery destination.

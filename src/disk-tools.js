@@ -60,6 +60,52 @@
   }
   function filesystem(root) {
     const cache = new Map([["", root]]);
+    const listings = new Map();
+    async function openDirectory(parent, name, prefix, create) {
+      try {
+        return await operation("open_local_folder", prefix, () =>
+          parent.getDirectoryHandle(name),
+        );
+      } catch (e) {
+        if (e.name !== "NotFoundError") throw e;
+      }
+      // A named lookup can disagree with the provider's directory listing.
+      // Use only an exact, browser-issued handle; never guess or rename a path.
+      if (typeof parent.entries === "function") {
+        const parentPath = prefix.slice(0, prefix.lastIndexOf("/"));
+        if (!listings.has(parentPath)) {
+          const listing = new Map();
+          await operation("list_local_folder", parentPath || "/", async () => {
+            for await (const [entryName, entry] of parent.entries()) {
+              if (listing.size >= 10000) throw fail("folder_listing_limit");
+              listing.set(entryName, entry);
+            }
+          });
+          listings.set(parentPath, listing);
+        }
+        const listing = listings.get(parentPath),
+          entry = listing.get(name);
+        if (entry) {
+          if (entry.kind !== "directory")
+            throw Object.assign(fail("TypeMismatchError"), {
+              operation: "open_local_folder",
+              localPath: prefix,
+            });
+          return entry;
+        }
+        if ([...listing.keys()].some((x) => key(x) === key(name)))
+          throw Object.assign(fail("local_name_mismatch"), {
+            operation: "open_local_folder",
+            localPath: prefix,
+          });
+      }
+      if (!create) return null;
+      const handle = await operation("create_local_folder", prefix, () =>
+        parent.getDirectoryHandle(name, { create: true }),
+      );
+      listings.delete(prefix.slice(0, prefix.lastIndexOf("/")));
+      return handle;
+    }
     async function directory(segments, create = false, fresh = false) {
       let handle = root,
         prefix = "";
@@ -68,16 +114,7 @@
         if (!fresh && cache.has(prefix) && (cache.get(prefix) || !create))
           handle = cache.get(prefix);
         else if (handle) {
-          try {
-            handle = await operation(
-              create ? "create_local_folder" : "open_local_folder",
-              prefix,
-              () => handle.getDirectoryHandle(name, { create }),
-            );
-          } catch (e) {
-            if (e.name === "NotFoundError" && !create) handle = null;
-            else throw e;
-          }
+          handle = await openDirectory(handle, name, prefix, create);
           cache.set(prefix, handle);
         }
         if (!handle) return null;
@@ -85,17 +122,18 @@
       return handle;
     }
     async function inspect(segments, type, fresh = false) {
+      if (type === "folder") {
+        return {
+          status: (await directory(segments, false, fresh))
+            ? "present"
+            : "missing",
+        };
+      }
       const parent = await directory(segments.slice(0, -1), false, fresh);
       if (!parent) return { status: "missing" };
       const path = "/" + segments.join("/");
       let handle;
       try {
-        if (type === "folder") {
-          await operation("open_local_folder", path, () =>
-            parent.getDirectoryHandle(segments.at(-1)),
-          );
-          return { status: "present" };
-        }
         handle = await operation("open_local_file", path, () =>
           parent.getFileHandle(segments.at(-1)),
         );
@@ -260,6 +298,7 @@
       foldersCreated: 0,
       bytes: 0,
       skipped: 0,
+      blockedFiles: 0,
       issues: [],
       files: [],
       status: "running",
@@ -297,6 +336,7 @@
       if (Date.now() - start >= maxMs) throw fail("time_limit");
     };
     result.concurrency = concurrency;
+    const failedFolders = new Map();
     async function processRow(row) {
       let reserved = false;
       let writable,
@@ -328,6 +368,18 @@
       try {
         checkStop();
         const segments = parts(row.path);
+        const failedParent = [...failedFolders].find(([path]) =>
+          path === "/" ? true : row.path.startsWith(path + "/"),
+        );
+        if (failedParent) {
+          result.skipped++;
+          if (row.type === "file") {
+            result.blockedFiles++;
+            failedParent[1].blockedFiles++;
+          }
+          update("Skipped", true, "parent_folder_unavailable");
+          return;
+        }
         const local = await fs.inspect(segments, row.type, true);
         checkStop();
         if (halted) return;
@@ -362,6 +414,9 @@
         reservedBytes += row.size;
         reservedFiles++;
         reserved = true;
+        // Resolve/create parents before requesting content, avoiding doomed transfers.
+        await fs.directory(segments.slice(0, -1), true, true);
+        checkStop();
         update("Requesting file");
         step = "request_file";
         response = await fetchFile(row, runSignal, (value) => {
@@ -461,6 +516,18 @@
           size: row.size,
           bytes: fileBytes,
         });
+        if (
+          [
+            "open_local_folder",
+            "create_local_folder",
+            "list_local_folder",
+          ].includes(step) &&
+          e.localPath
+        ) {
+          const issue = result.issues.at(-1);
+          issue.blockedFiles = 0;
+          failedFolders.set(e.localPath, issue);
+        }
         update("Issue", true, code);
         // Preserve any empty placeholder; report it on the next disk check.
       } finally {
@@ -500,6 +567,70 @@
     result.status = result.issues.length ? "partial" : "finished";
     return result;
   }
+  async function fetchDownload({
+    row,
+    base,
+    origin,
+    signal,
+    setStep = () => {},
+    request = fetch,
+  }) {
+    const sourceMetadata =
+      typeof module !== "undefined" && module.exports
+        ? require("./inventory.js").sourceMetadata
+        : window.__oneDriveInventoryLibrary.sourceMetadata;
+    const timeout = AbortSignal.any([
+      signal,
+      AbortSignal.timeout(5 * 60 * 1000),
+    ]);
+    setStep("request_metadata");
+    const response = await request(
+      base + "/items/" + encodeURIComponent(row.id),
+      {
+        method: "GET",
+        credentials: "same-origin",
+        redirect: "error",
+        signal: timeout,
+        headers: { Accept: "application/json" },
+      },
+    );
+    if (!response.ok) throw fail("metadata_http_" + response.status);
+    setStep("read_metadata");
+    const meta = await response.json();
+    if (
+      meta.id !== row.id ||
+      meta.size !== row.size ||
+      meta.name !== row.name ||
+      meta.lastModifiedDateTime !== row.modified ||
+      meta.parentReference?.id !== row.parentId
+    )
+      throw fail("remote_changed_rescan");
+    const link =
+      meta["@microsoft.graph.downloadUrl"] || meta["@content.downloadUrl"];
+    if (typeof link !== "string") throw fail("download_url_missing");
+    const url = new URL(link, origin);
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      !(
+        url.hostname === "onedrive.live.com" ||
+        url.hostname.endsWith(".files.1drv.com") ||
+        url.hostname.endsWith(".sharepoint.com") ||
+        url.hostname.endsWith(".storage.live.com")
+      )
+    )
+      throw fail("unrecognized_download_host");
+    setStep("request_download");
+    const content = await request(url.href, {
+      method: "GET",
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
+      signal: timeout,
+    });
+    if (!content.ok) throw fail("download_http_" + content.status);
+    return { body: content.body, metadata: sourceMetadata(meta) };
+  }
   const api = {
     parts,
     checkDisk,
@@ -507,11 +638,13 @@
     validateInventory,
     samplePlan,
     recoveryPlan,
+    fetchDownload,
   };
   if (typeof module !== "undefined" && module.exports) {
     module.exports = api;
     return;
   }
+  window.__oneDriveDiskLibrary = api;
   const host = document.getElementById("od-inventory-tool");
   if (!host?.shadowRoot || !window.showDirectoryPicker)
     throw fail("open_inventory_in_desktop_chrome_or_edge");
@@ -618,7 +751,11 @@
     }
   };
   check.onclick = async () => {
-    if (window.__oneDriveInventoryScanning || window.__oneDriveMetadataBusy) {
+    if (
+      window.__oneDriveInventoryScanning ||
+      window.__oneDriveMetadataBusy ||
+      window.__oneDriveArchiveBusy
+    ) {
       status.textContent = "Wait for the inventory scan to finish.";
       return;
     }
@@ -659,7 +796,11 @@
     }
   };
   const startDownload = async (sample = false, recovery = false) => {
-    if (window.__oneDriveInventoryScanning || window.__oneDriveMetadataBusy) {
+    if (
+      window.__oneDriveInventoryScanning ||
+      window.__oneDriveMetadataBusy ||
+      window.__oneDriveArchiveBusy
+    ) {
       status.textContent = "Wait for the inventory scan to finish.";
       return;
     }
@@ -706,60 +847,14 @@
             " folders created · " +
             p.errors +
             " issues"),
-        fetchFile: async (row, signal, setStep) => {
-          const timeout = AbortSignal.any([
+        fetchFile: (row, signal, setStep) =>
+          fetchDownload({
+            row,
+            base,
+            origin: location.origin,
             signal,
-            AbortSignal.timeout(5 * 60 * 1000),
-          ]);
-          setStep("request_metadata");
-          const response = await fetch(
-            base + "/items/" + encodeURIComponent(row.id),
-            {
-              method: "GET",
-              credentials: "same-origin",
-              redirect: "error",
-              signal: timeout,
-              headers: { Accept: "application/json" },
-            },
-          );
-          if (!response.ok) throw fail("metadata_http_" + response.status);
-          setStep("read_metadata");
-          const meta = await response.json();
-          if (
-            meta.id !== row.id ||
-            meta.size !== row.size ||
-            meta.name !== row.name ||
-            meta.lastModifiedDateTime !== row.modified ||
-            meta.parentReference?.id !== row.parentId
-          )
-            throw fail("remote_changed_rescan");
-          const link =
-            meta["@microsoft.graph.downloadUrl"] ||
-            meta["@content.downloadUrl"];
-          if (typeof link !== "string") throw fail("download_url_missing");
-          const url = new URL(link, location.origin);
-          if (
-            url.protocol !== "https:" ||
-            url.username ||
-            url.password ||
-            !(
-              url.hostname === "onedrive.live.com" ||
-              url.hostname.endsWith(".files.1drv.com") ||
-              url.hostname.endsWith(".sharepoint.com") ||
-              url.hostname.endsWith(".storage.live.com")
-            )
-          )
-            throw fail("unrecognized_download_host");
-          setStep("request_download");
-          const content = await fetch(url.href, {
-            method: "GET",
-            credentials: "omit",
-            referrerPolicy: "no-referrer",
-            signal: timeout,
-          });
-          if (!content.ok) throw fail("download_http_" + content.status);
-          return content;
-        },
+            setStep,
+          }),
       });
       result.scope = recovery
         ? "separate_recovery_folder"
@@ -786,6 +881,7 @@
           foldersCreated: result.foldersCreated,
           bytes: result.bytes,
           skipped: result.skipped,
+          blockedFiles: result.blockedFiles,
           issues: result.issues.length,
         },
         null,

@@ -14,6 +14,7 @@
   const steps = {
     check_destination: "Checking destination",
     open_local_folder: "Opening local folder",
+    list_local_folder: "Listing local folder",
     create_local_folder: "Creating local folder",
     open_local_file: "Looking up local file",
     read_local_file: "Reading local file details",
@@ -41,15 +42,26 @@
     if (/cancel|limit|budget/.test(code)) return "Stopped or limited";
     return "Other issues";
   }
-  function advice(code, step) {
+  function advice(code, step, source) {
+    if (source === "ZIP export") {
+      if (/cancel|AbortError|TimeoutError/.test(code))
+        return "ZIP export stopped. Completed ZIPs remain available for restoration. Run Download restricted ZIPs again to start another export.";
+      if (/hash|size_mismatch|readback/.test(code))
+        return "This ZIP did not pass verification. Keep it separate from verified ZIPs, scan and check disk again, then retry the ZIP export.";
+    }
+    if (code === "local_name_mismatch")
+      return "The local folder has a different spelling or Unicode form. Check the local and OneDrive names; ambiguous names are preserved.";
     if (code === "browser_restricted_file_type")
-      return "Chrome/Edge rejected this file type. Retrying here will not remove that restriction. Use the OneDrive desktop app or OneDrive's own download controls for these items; review any browser warning. The tool will not rename files to bypass restrictions.";
+      return "Chrome/Edge rejected this file type. Retrying here will not remove that restriction. Use Download restricted ZIPs in Files & dates to save one file per ZIP, then run restore-zip.py outside the browser. OneDrive's own download controls or desktop app are alternatives.";
     if (code === "browser_rejected_name")
       return "The browser rejected this local name or file type. Review the failing path. Other file types can also be restricted; use OneDrive's own download controls if needed.";
     if (code === "empty_local_file")
       return "An empty file already exists. It may be an interrupted-download placeholder, but its origin is unknown. Use Copy size mismatches elsewhere in Files & dates to recover a separate copy for review. The empty original is preserved.";
     if (code === "existing_size_mismatch")
       return "Existing contents are preserved. Use Copy size mismatches elsewhere in Files & dates to compare a separate OneDrive copy. Size alone does not identify which copy is correct.";
+    if (code === "NotFoundError")
+      if (/local_folder/.test(step || ""))
+        return "The browser still could not access this folder after automatic lookup. Explorer may display it even when browser access fails. Files below this unavailable folder are skipped; other folders continue. Save issue details if it repeats. No individual folder selection is required.";
     if (code === "NotFoundError")
       return /local|destination|open_write_stream/.test(step || "")
         ? "A local file or folder could not be found at this step. This is not a OneDrive HTTP 404. Keep the destination idle, select it again and check disk. If it repeats, save issue details; try a separate short folder path to test whether the original destination is involved."
@@ -88,7 +100,14 @@
       return "This item is outside the tool's supported coverage; review it separately in OneDrive.";
     return "Review this item, then retry the relevant scan or disk check. No automatic overwrite is offered.";
   }
-  function collectIssues({ inventory, plan, result, metadata, recovery }) {
+  function collectIssues({
+    inventory,
+    plan,
+    result,
+    metadata,
+    recovery,
+    archives,
+  }) {
     const rows = [];
     const add = (source, row, code) =>
       rows.push({
@@ -98,6 +117,7 @@
         localSize: row.localSize,
         size: row.size,
         bytes: row.bytes,
+        blockedFiles: row.blockedFiles,
         operation: steps[row.operation] ? row.operation : undefined,
         localPath: row.localPath,
         folder: row.folder,
@@ -119,6 +139,7 @@
         );
     for (const x of result?.issues || [])
       add("Download", { ...x, folder: result.folder }, x.code);
+    for (const x of archives?.issues || []) add("ZIP export", x, x.code);
     for (const x of metadata?.items || [])
       if (x.repairError) add("Date repair", x, x.repairError);
     return rows;
@@ -227,6 +248,7 @@
     "Download",
     "Recovery folder",
     "Date repair",
+    "ZIP export",
   ].forEach((s) => {
     const o = make("option", s, filter);
     o.value = s;
@@ -295,6 +317,7 @@
       window.__oneDriveDownloadResult,
       window.__oneDriveDateRepairManifest,
       window.__oneDriveRecoveryPlan,
+      window.__oneDriveArchiveResult,
     ];
     const changed = refs.some((r, i) => r !== cachedRefs[i]);
     if (!force && !changed) return;
@@ -305,6 +328,7 @@
         result: refs[2],
         metadata: refs[3],
         recovery: refs[4],
+        archives: refs[5],
       });
       cachedRefs = refs;
     }
@@ -356,6 +380,13 @@
       if (x.localPath && x.localPath !== x.path)
         make("p", "Affected path: " + x.localPath, card);
       if (x.folder) make("p", "Destination folder: " + x.folder, card);
+      if (x.blockedFiles)
+        make(
+          "p",
+          x.blockedFiles +
+            " files skipped under this unavailable folder. Other folders continue.",
+          card,
+        );
       if (Number.isFinite(x.bytes))
         make(
           "p",
@@ -364,7 +395,8 @@
             " (not necessarily saved)",
           card,
         );
-      make("p", advice(x.code, x.operation), card).className = "od-muted";
+      make("p", advice(x.code, x.operation, x.source), card).className =
+        "od-muted";
     }
     previous.disabled = page === 0;
     next.disabled = (page + 1) * 50 >= found.length;

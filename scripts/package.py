@@ -15,6 +15,8 @@ FILES = (
     "docs/behavior.md",
     "repair-dates.py",
     "docs/date-repair.md",
+    "restore-zip.py",
+    "docs/zip-recovery.md",
 )
 
 for name in FILES:

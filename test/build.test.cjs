@@ -27,6 +27,8 @@ test("portable launcher copies the complete source, with no external script depe
     "docs/behavior.md",
     "repair-dates.py",
     "docs/date-repair.md",
+    "restore-zip.py",
+    "docs/zip-recovery.md",
   ])
     assert.ok(fs.statSync(path.join(folder, file)).size > 0);
   execFileSync(process.execPath, [

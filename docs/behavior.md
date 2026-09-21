@@ -90,7 +90,9 @@ The adapter uses the observed same-origin
 This interface is undocumented and may change; this is not an unattended OAuth
 client. OneDrive source requests are GET-only. File downloads are read-only
 HTTPS requests. All writes go to the user-selected local folder or local exports.
-No upload, remote update, remote delete, local delete or content overwrite mode exists.
+No upload, remote update, remote delete or content overwrite mode exists.
+Only the ZIP restoration helper offers local deletion: its own input ZIP, on
+explicit cleanup, after successful destination verification.
 The optional offline helper can repair existing file timestamps after verifying
 content. See [date repair](date-repair.md).
 
@@ -124,8 +126,8 @@ Activity retains its historical events.
 - A local name lookup rejected with `TypeError` for `.lnk`, `.url`, `.scf` or
   `.ini` is explained as a browser restriction. Classification requires an actual
   local rejection; a network `TypeError` is not treated as a restricted file type.
-  Other rejected names have separate guidance. Use the OneDrive desktop app or
-  OneDrive's download controls for restricted items, subject to their own checks.
+  Other rejected names have separate guidance. Use the one-file ZIP workflow,
+  the OneDrive desktop app or OneDrive's download controls for restricted items.
 - `NotFoundError` now includes the failing operation and affected relative path:
   folder lookup/creation, file lookup/creation, reading file details, opening the
   write stream, receiving data, writing, saving or verification. A local failure
@@ -158,3 +160,20 @@ Research checked against primary sources on 2026-09-21:
 
 These changes improve diagnosis and safe recovery. They do not claim to fix all
 Windows path, permission, file-lock, security-scanner or filesystem failures.
+
+## Automatic folder discovery (v1.5)
+
+Existing folders are opened without requesting creation. If a named lookup says
+NotFoundError, the tool automatically checks the parent directory's listing and
+uses an exact existing directory handle when available. It never asks users to
+connect folders one at a time. Failed listing is an access conflict, not evidence
+that a folder is missing. The fallback is bounded to 10,000 entries per parent.
+
+Missing parent folders are prepared before fetching file contents. A folder
+that still fails produces one issue with the number of dependent files skipped;
+other branches continue. This avoids repeating the same failed creation and
+starting downloads that cannot be saved. This is a tested automatic recovery
+path, not proof that every Windows provider error is resolved. Live validation
+on the affected Windows folder is still required.
+
+For browser-restricted types, see [one-file ZIP recovery](zip-recovery.md).

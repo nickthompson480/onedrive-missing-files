@@ -107,3 +107,20 @@ All four hosted jobs passed at ccb3647 (run 35647452489). Published v1.4.0 ZIP
 and checksum were downloaded and verified against the local build; seven-file
 allowlist and archive integrity passed. Final browser check also confirmed the
 recovery destination is named in the completion status.
+
+## Version 1.5 evidence
+
+55 JavaScript tests pass. New tests cover read-before-create, automatic exact
+listing-handle recovery, access failures, parent issue grouping and no doomed
+content fetches. ZIP tests cover single-entry Unicode interoperability through
+the native CLI, hashes, sizes, cancellation, saved-byte readback and preservation.
+20 Python tests on the development Mac: 18 pass and two Windows-only skips.
+Native restoration verifies preview/apply, source dates, identical/differing/empty
+files, traversal and extra-entry rejection, symlinks and failed-write retention.
+
+Synthetic browser acceptance uses actual UI code with simulated filesystem and
+network: one initial destination selection, automatic recovery of a folder whose
+named lookup fails, successful child download and preserved original, verified
+one-file ZIP export, locked controls during export, stopped stalled stream and
+ZIP issue reporting. These checks do not reproduce the real Windows provider
+failure. Hosted checks and v1.5 release verification are still pending.

@@ -12,9 +12,9 @@ tags: []
 
 Provide a dependency-free browser tool for desktop Chrome/Edge on OneDrive Personal. Enumerate the ordinary My files tree, export sanitized metadata, compare full relative paths under a chosen local directory, and stream missing files into that directory.
 
-Require terminal enumeration without unresolved structural errors before disk operations. Preserve existing paths and size conflicts. Report unsupported namespaces, incompatible paths, incomplete scans, and interrupted copies explicitly. Never upload, delete, or offer an overwrite mode.
+Require terminal enumeration without unresolved structural errors before disk operations. Preserve existing paths and size conflicts. Report unsupported namespaces, incompatible paths, incomplete scans, and interrupted copies explicitly. Never upload, delete source/destination originals, or offer an overwrite mode.
 
-The portable release must contain only the launcher, combined script, offline timestamp helper, documentation, and license. It must not contain runtime account data. Test source and artifacts with synthetic fixtures, and keep native-browser acceptance separate from simulated cross-platform CI.
+The portable release must contain only the launcher, combined script, offline native helpers, documentation, and license. It must not contain runtime account data. Test source and artifacts with synthetic fixtures, and keep native-browser acceptance separate from simulated cross-platform CI.
 
 
 ## Timestamp restoration (v1.1)
@@ -52,3 +52,17 @@ without asserting their provenance. Support separate-folder comparison copies
 of size mismatches; reject overlapping roots and preserve existing recovery
 files. A disappearing getFile snapshot remains a conflict. Do not claim a
 Windows root cause without runtime evidence.
+
+## Automatic folders and single-file ZIP recovery (v1.5)
+
+No per-folder connection or selection is required. Try read-only folder lookup
+before creation; on NotFoundError enumerate the parent and reuse an exact
+browser-issued directory handle. Treat failed enumeration and ambiguous names
+as conflicts. Bound parent enumeration and group dependent failures.
+
+Offer one original restricted file per ZIP, with its relative path and sanitized
+source dates/hash in the ZIP comment. Source requests remain GET-only. An offline
+helper previews by default, validates paths/hash/CRC, creates missing files
+exclusively, restores dates, reopens to verify and optionally deletes only the
+successful input ZIP. Preserve differing or partial destination files and failed
+ZIPs. Never execute archive entries. Reject links, reparse paths and special files.

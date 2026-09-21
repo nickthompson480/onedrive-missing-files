@@ -22,3 +22,11 @@ tags: []
 - Use file descriptors/handles for verification and metadata updates. Preview
   first by default, journal before writing, report precision failures, and
   retain the distinction between creation time and Unix metadata-change time.
+
+- 2026-09-21: user rejects per-folder connection prompts. Recover exact existing
+  folder handles automatically from parent listings when named lookup fails;
+  never infer that failed enumeration means a missing folder.
+- 2026-09-21: each restricted-file ZIP contains one original file. Assemble it
+  locally from verified GET content rather than depend on an unobserved Microsoft
+  ZIP endpoint. Native extraction is required for restricted names. User-authorized
+  ZIP deletion is opt-in and follows destination hash readback; failed ZIPs remain.

@@ -2,7 +2,7 @@
 
 List your **OneDrive Personal** files and folders, compare them with a local folder, and download the files that are missing.
 
-Runs inside your signed-in OneDrive tab in desktop **Chrome or Edge**. No app registration, separate login, extension, or installed OneDrive client is required. The browser tool has no runtime dependencies; optional date repair requires Python 3.11 or newer.
+Runs inside your signed-in OneDrive tab in desktop **Chrome or Edge**. No app registration, separate login, extension, or installed OneDrive client is required. The browser tool has no runtime dependencies; optional date repair and ZIP restoration require Python 3.11 or newer.
 
 ## Get started
 
@@ -51,7 +51,7 @@ A complete inventory is required before checking or copying. Time-limited scans 
 
 ## Privacy
 
-Microsoft requests read your OneDrive metadata and selected file contents using the existing tab session. Local file checks and writes use the browser's folder permission. **There is no upload, remote edit, remote delete, local delete, or content-overwrite mode.** The optional local helper changes creation/modification timestamps after content verification.
+Microsoft requests read your OneDrive metadata and selected file contents using the existing tab session. Local file checks and writes use the browser's folder permission. **There is no upload, remote edit, remote delete, or content-overwrite mode.** The date helper changes timestamps after content verification. The ZIP helper can optionally delete only its input ZIP after verified restoration; destination files are preserved.
 
 The tool has no analytics or third-party backend. Credentials and temporary download URLs are not included in exports. Reports do contain your file paths and metadata; keep them private and do not attach them to public issues.
 
@@ -69,7 +69,7 @@ The tool uses an undocumented OneDrive website interface, which Microsoft can ch
 
 ## Development from a source checkout
 
-Use Node.js 22 or newer:
+Use Node.js 22 or newer and Python 3.11 or newer:
 
 ```sh
 npm ci
@@ -81,7 +81,7 @@ npm run build
 
 Open `dist/onedrive-missing-files/Start here.html` for the built launcher. The `src/` scripts run in the OneDrive page; `test/` uses synthetic data and simulated browser file handles. Prettier is a development-only dependency.
 
-To produce the downloadable ZIP and checksum file, run `python3 scripts/package.py` after building. The packager includes only the launcher, combined script, README, guides, timestamp helper, and license.
+To produce the downloadable ZIP and checksum file, run `python3 scripts/package.py` after building. The packager includes only the launcher, combined script, README, guides, native helpers, and license.
 
 Please include a browser version and an error code when reporting a bug. Do not include account identifiers, signed URLs, access tokens, or private filenames.
 
@@ -124,5 +124,16 @@ The Issues tab shows failure steps, type filters and **Save issue details**.
 Empty files and nonempty size mismatches have separate guidance. Use **Copy size
 mismatches elsewhere** in Files & dates to download comparison copies to a
 separate folder; both originals and existing recovery files stay unchanged.
-Browser-restricted file types need OneDrive's own download controls or desktop
-app. See [Windows issues and recovery](docs/behavior.md#windows-issues-and-recovery-v14).
+Browser-restricted file types can use the one-file ZIP workflow below, or
+OneDrive's own download controls or desktop app. See [Windows issues and recovery](docs/behavior.md#windows-issues-and-recovery-v14).
+
+### Restricted files and existing folders (v1.5)
+
+**Download restricted ZIPs** saves one original file per ZIP for `.lnk`, `.ini`,
+`.url` and `.scf` files rejected by the browser. The included `restore-zip.py`
+helper extracts missing files, verifies them and can delete each successful ZIP.
+See [ZIP recovery instructions](docs/zip-recovery.md).
+
+Folder discovery now checks existing directory listings automatically when a
+name lookup fails. There is no per-folder connection step. Failed parent folders
+are reported once with the dependent file count, while other branches continue.
