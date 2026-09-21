@@ -87,7 +87,9 @@ The adapter uses the observed same-origin
 This interface is undocumented and may change; this is not an unattended OAuth
 client. OneDrive source requests are GET-only. File downloads are read-only
 HTTPS requests. All writes go to the user-selected local folder or local exports.
-No upload, remote update, remote delete, local delete or overwrite mode exists.
+No upload, remote update, remote delete, local delete or content overwrite mode exists.
+The optional offline helper can repair existing file timestamps after verifying
+content. See [date repair](date-repair.md).
 
 The [Microsoft Graph download guidance](https://learn.microsoft.com/en-us/graph/api/driveitem-get-content?view=graph-rest-1.0)
 describes browser downloads through temporary download URLs. Chrome documents

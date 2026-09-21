@@ -16,9 +16,16 @@ test("portable launcher copies the complete source, with no external script depe
     .replaceAll("&amp;", "&");
   assert.equal(textarea, code);
   assert.ok(code.includes("samplePlan"));
+  assert.ok(code.includes("Export date repair JSON"));
   assert.ok(html.includes("Test 3 small files"));
   assert.doesNotMatch(html, /<script[^>]+src\s*=/i);
-  for (const file of ["README.md", "LICENSE", "docs/behavior.md"])
+  for (const file of [
+    "README.md",
+    "LICENSE",
+    "docs/behavior.md",
+    "repair-dates.py",
+    "docs/date-repair.md",
+  ])
     assert.ok(fs.statSync(path.join(folder, file)).size > 0);
   execFileSync(process.execPath, [
     "--check",

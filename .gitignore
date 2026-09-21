@@ -16,3 +16,7 @@ onedrive-inventory*.json
 onedrive-inventory*.csv
 onedrive-inventory*.txt
 onedrive-disk-report*.json
+__pycache__/
+*.py[cod]
+*.jsonl
+onedrive-date-repair*.json

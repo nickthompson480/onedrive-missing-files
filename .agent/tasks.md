@@ -18,3 +18,12 @@ tags: []
 - [x] Publish v1.0.0 with ZIP and SHA-256 checksum assets; download and verify
   the published payload against the reviewed local archive.
 - [ ] Complete native Windows Chrome/Edge browser acceptance.
+
+## Version 1.1 timestamp repair
+
+- [x] Preserve fileSystemInfo dates and source hashes without exporting credentials.
+- [x] Add fresh, bounded date-repair manifest export and offline native helper.
+- [x] Test preview/apply/idempotence, mismatches, symlinks, hardlinks, folder opt-in,
+  journal failure, limits, and Mac birth-time preservation using disposable files.
+- [x] Exercise metadata-export UI with synthetic browser data.
+- [ ] Pass native Windows/Linux/macOS CI and publish the v1.1 release.

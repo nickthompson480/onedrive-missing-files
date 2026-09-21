@@ -13,3 +13,9 @@ tags: []
 `src/inventory.js` owns bounded source enumeration and metadata exports. `src/disk-tools.js` owns browser folder access, comparison, and streaming downloads. `scripts/build.cjs` creates the offline launcher. `scripts/package.py` builds a deterministic release archive from an explicit allowlist. Tests use synthetic data only.
 
 The OneDrive website API is undocumented and can change. The browser session and granted directory handle remain in the current tab. Reloading clears them. Account exports are user-private runtime artifacts.
+
+
+`src/metadata-tools.js` exports a fresh sanitized date-repair manifest.
+`native/repair-dates.py` is the optional offline Python 3.11+ helper; it verifies
+file contents and sets timestamps through native handles, never network calls
+or file-content writes. Native tests live in `test/test_repair_dates.py`.

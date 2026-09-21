@@ -16,6 +16,18 @@ Runs inside your signed-in OneDrive tab in desktop **Chrome or Edge**. No app re
 
 If Chrome blocks pasting, review the source provided in the launcher and follow Chrome's manual instructions. Keep the OneDrive tab open while scanning or downloading. Refreshing the page removes the tool.
 
+## Restore original dates (new and existing downloads)
+
+Browser downloads initially receive current local timestamps. Version 1.1 adds
+**Export date repair JSON** and a local Python helper that restores OneDrive's
+creation and modification dates after downloading. It also repairs older copies
+without downloading file contents again.
+
+The helper previews by default, verifies file hashes, and changes only metadata
+when run with `--apply`. Windows and macOS support both dates; Linux supports
+modification-only repair. Python 3.11 or newer is required for this optional step.
+See [date repair instructions](docs/date-repair.md) for the complete workflow.
+
 ## How files are matched
 
 A OneDrive item at `/Documents/Report.pdf` is checked at `<selected-folder>/Documents/Report.pdf`. Matching uses the full relative path, not just the filename.
@@ -39,7 +51,7 @@ A complete inventory is required before checking or copying. Time-limited scans 
 
 ## Privacy
 
-Microsoft requests read your OneDrive metadata and selected file contents using the existing tab session. Local file checks and writes use the browser's folder permission. **There is no upload, remote edit, remote delete, local delete, or overwrite mode.**
+Microsoft requests read your OneDrive metadata and selected file contents using the existing tab session. Local file checks and writes use the browser's folder permission. **There is no upload, remote edit, remote delete, local delete, or content-overwrite mode.** The optional local helper changes creation/modification timestamps after content verification.
 
 The tool has no analytics or third-party backend. Credentials and temporary download URLs are not included in exports. Reports do contain your file paths and metadata; keep them private and do not attach them to public issues.
 
@@ -62,13 +74,14 @@ Use Node.js 22 or newer:
 ```sh
 npm ci
 npm test
+python3 -m unittest discover -s test -p "test_*.py"
 npm run format:check
 npm run build
 ```
 
 Open `dist/onedrive-missing-files/Start here.html` for the built launcher. The `src/` scripts run in the OneDrive page; `test/` uses synthetic data and simulated browser file handles. Prettier is a development-only dependency.
 
-To produce the downloadable ZIP and checksum file, run `python3 scripts/package.py` after building. The packager includes only the launcher, combined script, README, behavior guide, and license.
+To produce the downloadable ZIP and checksum file, run `python3 scripts/package.py` after building. The packager includes only the launcher, combined script, README, guides, timestamp helper, and license.
 
 Please include a browser version and an error code when reporting a bug. Do not include account identifiers, signed URLs, access tokens, or private filenames.
 

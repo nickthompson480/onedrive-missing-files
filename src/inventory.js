@@ -2,7 +2,7 @@
 (function () {
   "use strict";
   const fields =
-    "id,name,folder,file,package,size,createdDateTime,lastModifiedDateTime,specialFolder,remoteItem";
+    "id,name,folder,file,package,size,createdDateTime,lastModifiedDateTime,fileSystemInfo,specialFolder,remoteItem";
   const defaults = {
     maxItems: 1000000,
     maxRequests: 10000,
@@ -14,6 +14,30 @@
     if (/^[\s]*[=+@-]/.test(s) || /^[\t\r\n]/.test(s)) s = "'" + s;
     return '"' + s.replace(/"/g, '""') + '"';
   };
+  function sourceMetadata(item) {
+    const date = (value) =>
+      typeof value === "string" &&
+      value.length <= 40 &&
+      Number.isFinite(Date.parse(value))
+        ? value
+        : null;
+    const hash = (value, length) =>
+      typeof value === "string" &&
+      new RegExp("^[a-f0-9]{" + length + "}$", "i").test(value)
+        ? value.toLowerCase()
+        : null;
+    const fs = item.fileSystemInfo || {};
+    return {
+      fileCreated: date(fs.createdDateTime ?? item.createdDateTime),
+      fileModified: date(fs.lastModifiedDateTime ?? item.lastModifiedDateTime),
+      createdSource:
+        fs.createdDateTime != null ? "fileSystemInfo" : "driveItem",
+      modifiedSource:
+        fs.lastModifiedDateTime != null ? "fileSystemInfo" : "driveItem",
+      sha256: hash(item.file?.hashes?.sha256Hash, 64),
+      sha1: hash(item.file?.hashes?.sha1Hash, 40),
+    };
+  }
   function csv(report) {
     const columns = [
       "path",
@@ -23,6 +47,12 @@
       "created",
       "id",
       "coverage",
+      "fileCreated",
+      "fileModified",
+      "createdSource",
+      "modifiedSource",
+      "sha256",
+      "sha1",
     ];
     return (
       "\ufeff" +
@@ -167,6 +197,7 @@
             const isFolder =
               !!item.folder && !item.package && !remote && !vault;
             const row = {
+              ...sourceMetadata(item),
               path,
               id: item.id,
               type: remote
@@ -286,7 +317,7 @@
       records = new Map((resume?.items || []).map((x) => [x.id, { ...x }])),
       pages = new Set();
     const report = {
-      version: 2,
+      version: 3,
       method: "delta",
       started: new Date(start).toISOString(),
       finished: null,
@@ -386,6 +417,7 @@
           const remote = !!item.remoteItem,
             vault = item.specialFolder?.name === "vault";
           records.set(item.id, {
+            ...sourceMetadata(item),
             id: item.id,
             parentId: item.parentReference?.id || null,
             name: item.name,
@@ -521,7 +553,7 @@
     ).length;
     return report;
   }
-  const lib = { collect, collectDelta, csv, csvCell };
+  const lib = { collect, collectDelta, csv, csvCell, sourceMetadata };
   if (typeof module !== "undefined" && module.exports) {
     module.exports = lib;
     return;
@@ -614,7 +646,7 @@
     host.remove();
   };
   run.onclick = async () => {
-    if (window.__oneDriveDiskBusy) return;
+    if (window.__oneDriveDiskBusy || window.__oneDriveMetadataBusy) return;
     window.__oneDriveInventoryScanning = true;
     run.disabled = true;
     stop.disabled = false;

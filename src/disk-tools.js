@@ -384,7 +384,7 @@
     }
   };
   check.onclick = async () => {
-    if (window.__oneDriveInventoryScanning) {
+    if (window.__oneDriveInventoryScanning || window.__oneDriveMetadataBusy) {
       status.textContent = "Wait for the inventory scan to finish.";
       return;
     }
@@ -421,7 +421,7 @@
     }
   };
   const startDownload = async (sample = false) => {
-    if (window.__oneDriveInventoryScanning) {
+    if (window.__oneDriveInventoryScanning || window.__oneDriveMetadataBusy) {
       status.textContent = "Wait for the inventory scan to finish.";
       return;
     }
@@ -509,7 +509,7 @@
         result.downloaded +
         " files downloaded; " +
         result.issues.length +
-        " issues.";
+        " issues. Browser downloads use current dates; export date repair JSON to restore source dates.";
       detail.textContent = JSON.stringify(
         {
           downloaded: result.downloaded,

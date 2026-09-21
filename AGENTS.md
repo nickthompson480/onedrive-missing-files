@@ -92,7 +92,9 @@ update is warranted, state that plainly.
 - Run `npm test`, `npm run format:check`, and `npm run build` for source changes.
 - Use only synthetic fixtures in Git. Never commit account exports, browser
   profiles, credentials, temporary download URLs, or private filenames.
-- Keep Microsoft operations GET-only and local writes missing-file-only.
+- Keep Microsoft operations GET-only and file-content writes missing-file-only.
+  The user also authorizes a local timestamp-repair feature: verify file content
+  before applying source dates, default to preview, and never rewrite file bytes.
 - Keep source in `src/`, tests in `test/`, and build utilities in `scripts/`.
 - Release artifacts are generated under ignored `dist/`; upload only the
   archive and checksum produced by `scripts/package.py`.

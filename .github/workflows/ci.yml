@@ -23,8 +23,13 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
       - run: npm ci --ignore-scripts
       - run: npm run format:check
       - run: npm test
+      - run: python -m unittest discover -s test -p "test_*.py" -v
       - run: npm run build
       - run: node --check dist/onedrive-missing-files/onedrive-tool.js
+      - run: python scripts/package.py
