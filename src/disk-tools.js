@@ -174,6 +174,7 @@
     fetchFile,
     signal,
     progress = () => {},
+    activity = () => {},
     maxFiles = 10000,
     maxBytes = 5 * 1024 ** 3,
     maxMs = 60 * 60 * 1000,
@@ -201,8 +202,30 @@
           a.path.split("/").length - b.path.split("/").length ||
           a.path.localeCompare(b.path),
       );
+    const totalFiles = missing.filter((x) => x.type === "file").length;
     for (const row of missing) {
       let writable;
+      const fileStarted = Date.now();
+      let fileBytes = 0,
+        lastUpdate = 0;
+      const update = (stage, force = true, code = null) => {
+        const now = Date.now();
+        if (!force && now - lastUpdate < 200) return;
+        lastUpdate = now;
+        activity({
+          path: row.path,
+          size: row.size,
+          bytes: fileBytes,
+          stage,
+          code,
+          elapsedMs: now - fileStarted,
+          completed: result.downloaded,
+          total: totalFiles,
+        });
+      };
+      update(
+        row.type === "folder" ? "Creating folder" : "Checking destination",
+      );
       try {
         stop(signal);
         if (Date.now() - start >= maxMs) throw fail("time_limit");
@@ -210,11 +233,13 @@
         const local = await fs.inspect(segments, row.type, true);
         if (local.status !== "missing") {
           result.skipped++;
+          update("Skipped", true, "existing_file_preserved");
           continue;
         }
         if (row.type === "folder") {
           await fs.directory(segments, true, true);
           result.foldersCreated++;
+          update("Folder created");
           if (result.foldersCreated % 100 === 0) {
             progress({
               downloaded: result.downloaded,
@@ -229,12 +254,14 @@
         if (row.type !== "file") throw fail("unsupported_type");
         if (result.downloaded >= maxFiles || result.bytes + row.size > maxBytes)
           throw fail("download_budget");
+        update("Requesting file");
         const response = await fetchFile(row, signal);
         if (!response?.body) throw fail("missing_download_stream");
         // Recheck after the network request; never intentionally replace an existing file.
         if ((await fs.inspect(segments, "file", true)).status !== "missing") {
           await response.body.cancel();
           result.skipped++;
+          update("Skipped", true, "existing_file_preserved");
           continue;
         }
         const parent = await fs.directory(segments.slice(0, -1), true, true);
@@ -245,6 +272,7 @@
         if ((await handle.getFile()).size !== 0) {
           await response.body.cancel();
           result.skipped++;
+          update("Skipped", true, "existing_file_preserved");
           continue;
         }
         writable = await handle.createWritable({
@@ -263,9 +291,13 @@
             if (bytes > row.size || result.bytes + bytes > maxBytes)
               throw fail("download_size_mismatch");
             await writable.write(value);
+            const firstChunk = fileBytes === 0;
+            fileBytes = bytes;
+            update("Downloading", firstChunk);
           }
           if (bytes !== row.size) throw fail("download_size_mismatch");
           stop(signal);
+          update("Saving file");
           await writable.close();
           writable = null;
           if ((await handle.getFile()).size !== row.size)
@@ -273,6 +305,7 @@
           result.downloaded++;
           result.bytes += bytes;
           result.files.push({ path: row.path, bytes, status: "downloaded" });
+          update("Downloaded");
         } finally {
           await reader.cancel().catch(() => {});
           reader.releaseLock();
@@ -283,6 +316,7 @@
           e.code ||
           (signal?.aborted ? "cancelled" : e.name || "download_failed");
         result.issues.push({ path: row.path, code });
+        update("Issue", true, code);
         // A new empty placeholder may remain after a failed write. Never remove or
         // overwrite it automatically; the next check reports the size discrepancy.
         if (/limit|budget|cancelled|QuotaExceeded|NotAllowed/.test(code)) break;
@@ -373,6 +407,8 @@
         mode: "readwrite",
       });
       plan = null;
+      window.__oneDriveDiskPlan = null;
+      window.__oneDriveDownloadResult = null;
       download.disabled = test.disabled = true;
       check.disabled = false;
       status.textContent = "Selected: " + root.name + ". Click Check disk.";
@@ -392,6 +428,8 @@
     controller = new AbortController();
     plan = null;
     result = null;
+    window.__oneDriveDiskPlan = null;
+    window.__oneDriveDownloadResult = null;
     try {
       inventory = window.__oneDriveInventoryReport;
       plan = await checkDisk({
@@ -435,10 +473,13 @@
     try {
       const base = endpoint();
       const selectedPlan = sample ? samplePlan(plan) : plan;
+      window.__oneDriveDownloadResult = null;
+      window.__oneDriveActivity?.({ stage: "Starting", reset: true });
       result = await populate({
         plan: selectedPlan,
         root,
         signal: controller.signal,
+        activity: (entry) => window.__oneDriveActivity?.(entry),
         progress: (p) =>
           (status.textContent =
             p.downloaded +
@@ -503,6 +544,11 @@
       });
       result.scope = sample ? "small_file_test" : "all_missing";
       window.__oneDriveDownloadResult = result;
+      window.__oneDriveActivity?.({
+        stage:
+          result.status === "finished" ? "Finished" : "Stopped with issues",
+        finished: true,
+      });
       status.textContent =
         result.status +
         ": " +
@@ -524,6 +570,11 @@
       save.disabled = false;
     } catch (e) {
       status.textContent = "Download stopped: " + (e.code || e.name);
+      window.__oneDriveActivity?.({
+        stage: "Issue",
+        code: e.code || e.name,
+        finished: true,
+      });
     } finally {
       busy(false);
       download.disabled = test.disabled = true;

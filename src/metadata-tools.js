@@ -224,10 +224,9 @@
       status.textContent = "Wait for the current operation to finish.";
       return;
     }
-    const controls = [...section.querySelectorAll("button")].map((x) => [
-      x,
-      x.disabled,
-    ]);
+    const controls = [
+      ...section.querySelectorAll("button:not([data-navigation])"),
+    ].map((x) => [x, x.disabled]);
     controls.forEach(([x]) => (x.disabled = true));
     stop.disabled = false;
     window.__oneDriveMetadataBusy = true;

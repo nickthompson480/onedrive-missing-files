@@ -11,7 +11,8 @@ tags: []
 # Project State
 
 - Goal: Maintain a portable OneDrive Personal inventory and missing-file copier.
-- Current work: v1.1.0 timestamp repair is released and verified.
+- Current work: v1.2 activity and issues UI implemented; local validation passed,
+  hosted checks and release verification pending.
 - Validation: 32 JavaScript tests pass. Native helper tests pass on Windows
   (13), macOS and Linux (12 plus one Windows-only skip). Synthetic browser
   metadata export, stop, and resume passed. Native Windows browser acceptance

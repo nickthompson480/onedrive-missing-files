@@ -361,3 +361,39 @@ test("browser controls bound sample downloads and prevent closing during writes"
     2,
   );
 });
+
+test("activity reports transfer bytes, final commit, skips and failures without download URLs", async () => {
+  const root = new Directory();
+  const plan = await checkDisk({
+    report: report([row("a", "/A"), row("b", "/B"), row("c", "/C")]),
+    root,
+  });
+  root.entries.set("B", new File("B", "keep"));
+  const events = [];
+  const result = await populate({
+    plan,
+    root,
+    activity: (x) => events.push(x),
+    fetchFile: async (x) => {
+      if (x.id === "c")
+        throw Object.assign(new Error("private URL"), {
+          code: "metadata_http_503",
+        });
+      return response("abc");
+    },
+  });
+  assert.equal(result.downloaded, 1);
+  assert.ok(
+    events.some(
+      (x) => x.stage === "Downloading" && x.bytes === 3 && x.total === 3,
+    ),
+  );
+  assert.ok(events.some((x) => x.stage === "Saving file"));
+  assert.ok(events.some((x) => x.stage === "Downloaded" && x.completed === 1));
+  assert.ok(events.some((x) => x.stage === "Skipped" && x.path === "/B"));
+  assert.ok(
+    events.some((x) => x.stage === "Issue" && x.code === "metadata_http_503"),
+  );
+  assert.doesNotMatch(JSON.stringify(events), /private URL/);
+  assert.equal(root.entries.get("B").writes, 0);
+});

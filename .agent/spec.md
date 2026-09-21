@@ -29,3 +29,9 @@ by default and record before/after metadata when applying. File bytes, names,
 and cloud state remain unchanged. Windows/macOS support both dates; Linux must
 explicitly request modification-only behavior. Exclude symlinks, reparse points,
 hardlinks, traversal paths, and case/Unicode collisions.
+
+## Download visibility (v1.2)
+Show the current path, stream progress, average speed, stage and file counts.
+Keep stop available across accessible tabs. Provide bounded activity history
+and paginated/searchable issues from inventory, disk, downloads and date repair.
+Render filenames as text; never expose signed URLs or request credentials.

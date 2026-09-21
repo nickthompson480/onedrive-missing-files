@@ -16,6 +16,8 @@ test("portable launcher copies the complete source, with no external script depe
     .replaceAll("&amp;", "&");
   assert.equal(textarea, code);
   assert.ok(code.includes("samplePlan"));
+  assert.ok(code.includes("Issues & conflicts"));
+  assert.ok(code.includes("Current file download progress"));
   assert.ok(code.includes("Export date repair JSON"));
   assert.ok(html.includes("Test 3 small files"));
   assert.doesNotMatch(html, /<script[^>]+src\s*=/i);

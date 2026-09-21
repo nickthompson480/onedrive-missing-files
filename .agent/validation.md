@@ -56,3 +56,14 @@ The archive rebuild is deterministic. Native Windows/Edge sign-in, folder permis
   against the reviewed local build; seven-file allowlist and ZIP integrity pass.
   Public source and archive checks found no private account identifiers from
   the supplied request or credential-bearing request values.
+
+## Version 1.2 evidence
+
+34 JavaScript tests pass, including live transfer stages, committed byte counts,
+existing-file skips, sanitized failures, and issue collection across four sources.
+Synthetic browser checks verified 50% progress, byte/speed/count display, issue
+pagination (62 entries), search, conflict sizes and text-only unusual paths.
+Native Windows live browser acceptance remains pending.
+
+Final synthetic UI also verified completed activity history, 100% completion,
+and disabling Stop after the run finished.

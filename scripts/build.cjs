@@ -3,7 +3,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 const output = path.resolve(__dirname, "../dist/onedrive-missing-files");
 fs.mkdirSync(output, { recursive: true });
-const code = ["inventory.js", "disk-tools.js", "metadata-tools.js"]
+const code = [
+  "inventory.js",
+  "disk-tools.js",
+  "metadata-tools.js",
+  "activity-ui.js",
+]
   .map((x) => fs.readFileSync(path.join(__dirname, "../src", x), "utf8"))
   .join("\n");
 fs.writeFileSync(path.join(output, "onedrive-tool.js"), code);

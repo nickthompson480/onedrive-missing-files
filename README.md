@@ -88,3 +88,18 @@ Please include a browser version and an error code when reporting a bug. Do not 
 ## License
 
 [MIT](LICENSE).
+
+## Live progress and issues
+
+The panel has **Files & dates**, **Activity**, and **Issues** tabs. The current
+file stays visible while you switch tabs: full relative path, bytes transferred,
+percentage, average transfer speed (including request time), and completed file
+count. Stages distinguish requesting, downloading, saving, and completed files.
+The Stop downloads control remains available above all tabs.
+
+Activity retains the latest 200 completed, skipped, or failed items for the panel
+session. Issues combines inventory errors, disk conflicts, download failures,
+and date-repair skips. Search by path or reason, filter by source, and browse
+50 issues per page. Size conflicts show both local and OneDrive sizes with a
+suggested next step. Existing files are still preserved. Save the disk report
+for full download results; refreshing the page clears this session's activity.
