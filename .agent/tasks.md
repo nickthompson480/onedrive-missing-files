@@ -28,3 +28,9 @@ tags: []
 - [x] Exercise metadata-export UI with synthetic browser data.
 - [x] Pass native Windows/Linux/macOS CI and publish the v1.1 release; verify
   downloaded release assets against the local build.
+
+## Version 1.2 progress and issues
+
+- [x] Add throttled per-file progress, stages, activity and searchable issues tabs.
+- [x] Validate synthetic browser interactions and hosted cross-platform checks.
+- [x] Publish v1.2.0 and verify downloaded release assets.

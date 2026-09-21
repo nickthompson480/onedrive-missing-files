@@ -67,3 +67,7 @@ Native Windows live browser acceptance remains pending.
 
 Final synthetic UI also verified completed activity history, 100% completion,
 and disabling Stop after the run finished.
+
+All four hosted CI jobs passed at 3043f27 (run 35643549750). The published
+v1.2.0 seven-file ZIP was downloaded and matched the local build byte-for-byte;
+its SHA-256 and archive integrity checks passed.
