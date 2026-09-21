@@ -11,14 +11,16 @@ tags: []
 # Project State
 
 - Goal: Maintain a portable OneDrive Personal inventory and missing-file copier.
-- Current work: v1.1 timestamp repair is implemented and locally validated;
-  hosted native Windows tests and publication are pending.
-- Validation: 26 synthetic tests, formatting, launcher syntax, and ZIP integrity pass. The original browser workflow was exercised in Chrome on macOS. Native Windows browser acceptance remains pending.
-- Release: https://github.com/nickthompson480/onedrive-missing-files/releases/tag/v1.0.0
+- Current work: v1.1.0 timestamp repair is released and verified.
+- Validation: 32 JavaScript tests pass. Native helper tests pass on Windows
+  (13), macOS and Linux (12 plus one Windows-only skip). Synthetic browser
+  metadata export, stop, and resume passed. Native Windows browser acceptance
+  remains pending; no real user files were modified during v1.1 validation.
+- Release: https://github.com/nickthompson480/onedrive-missing-files/releases/tag/v1.1.0
   includes the ZIP and SHA-256 checksum. The published download is byte-identical
   to the reviewed local build and passes archive integrity checks.
-- Next action: run hosted native timestamp tests, publish v1.1, and verify
-  release assets. Native Windows browser acceptance remains separate from native
-  helper filesystem tests.
+- Next action: users can export fresh date metadata and preview the local helper
+  against their selected copy before applying. Complete separate native Windows
+  Chrome/Edge browser acceptance when that environment is available.
 - Boundaries: source GET-only; preserve existing local file contents. Metadata
   restoration is separately authorized, previews by default, and verifies hashes. No account data, inventories, credentials, or signed URLs belong in Git.

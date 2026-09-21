@@ -26,4 +26,5 @@ tags: []
 - [x] Test preview/apply/idempotence, mismatches, symlinks, hardlinks, folder opt-in,
   journal failure, limits, and Mac birth-time preservation using disposable files.
 - [x] Exercise metadata-export UI with synthetic browser data.
-- [ ] Pass native Windows/Linux/macOS CI and publish the v1.1 release.
+- [x] Pass native Windows/Linux/macOS CI and publish the v1.1 release; verify
+  downloaded release assets against the local build.

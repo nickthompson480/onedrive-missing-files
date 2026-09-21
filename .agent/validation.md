@@ -21,7 +21,7 @@ tags: [validation]
 
 ## Evidence
 
-26 local synthetic tests pass, including continuation, URL confinement, conflict handling, preservation races, truncation, bounded samples, permission failures, and launcher source round-trip validation. The combined browser script passes syntax checks. The release ZIP passes integrity checks and has an explicit five-file allowlist.
+The v1.0 baseline had 26 passing local synthetic tests, including continuation, URL confinement, conflict handling, preservation races, truncation, bounded samples, permission failures, and launcher source round-trip validation. The combined browser script passes syntax checks. The release ZIP passes integrity checks and has an explicit allowlist (seven files in v1.1).
 
 ## Gaps
 
@@ -44,7 +44,15 @@ The archive rebuild is deterministic. Native Windows/Edge sign-in, folder permis
   authenticated request supplied by the user was published or executed.
 - Native Windows CI passed all 13 tests, including creation/modification and
   junction rejection. macOS/Linux passed 12 tests with the Windows-specific
-  junction test skipped. The new metadata-continuation test passes locally;
-  hosted CI for that final addition is pending. Commands:
+  junction test skipped. The final 32-test JavaScript suite and native suite pass in all four jobs
+  of hosted run 35642434830 at commit 630b252. Commands:
   `python3 -m unittest discover -s test -p 'test_*.py' -v`,
   `ruff check native/repair-dates.py test/test_repair_dates.py scripts/package.py`.
+
+- The final synthetic browser check stopped after one refreshed file, exported a
+  partial manifest, then resumed and exported both files with correct dates and
+  hashes. No private sentinel fields appeared in either export.
+- Published v1.1.0 ZIP and checksum were downloaded and verified byte-for-byte
+  against the reviewed local build; seven-file allowlist and ZIP integrity pass.
+  Public source and archive checks found no private account identifiers from
+  the supplied request or credential-bearing request values.
