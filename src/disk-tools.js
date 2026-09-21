@@ -175,6 +175,7 @@
     signal,
     progress = () => {},
     activity = () => {},
+    concurrency = 1,
     maxFiles = 10000,
     maxBytes = 5 * 1024 ** 3,
     maxMs = 60 * 60 * 1000,
@@ -182,6 +183,8 @@
     if (plan?.status !== "checked") throw fail("check_disk_first");
     for (const n of [maxFiles, maxBytes, maxMs])
       if (!Number.isSafeInteger(n) || n < 1) throw fail("invalid_budget");
+    if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 5)
+      throw fail("invalid_concurrency");
     const start = Date.now(),
       fs = filesystem(root);
     const result = {
@@ -203,8 +206,34 @@
           a.path.localeCompare(b.path),
       );
     const totalFiles = missing.filter((x) => x.type === "file").length;
+    const seen = new Set();
     for (const row of missing) {
-      let writable;
+      const normalized = key(row.path);
+      if (seen.has(normalized)) throw fail("duplicate_download_path");
+      seen.add(normalized);
+    }
+    const runController = new AbortController();
+    const runSignal = signal
+      ? AbortSignal.any([signal, runController.signal])
+      : runController.signal;
+    let halted = false,
+      reservedBytes = 0,
+      reservedFiles = 0;
+    const timer = setTimeout(
+      () => runController.abort(fail("time_limit")),
+      maxMs,
+    );
+    const checkStop = () => {
+      if (runSignal.aborted)
+        throw fail(
+          runSignal.reason?.code === "time_limit" ? "time_limit" : "cancelled",
+        );
+      if (Date.now() - start >= maxMs) throw fail("time_limit");
+    };
+    result.concurrency = concurrency;
+    async function processRow(row) {
+      let reserved = false;
+      let writable, response;
       const fileStarted = Date.now();
       let fileBytes = 0,
         lastUpdate = 0;
@@ -214,6 +243,7 @@
         lastUpdate = now;
         activity({
           path: row.path,
+          type: row.type,
           size: row.size,
           bytes: fileBytes,
           stage,
@@ -227,14 +257,15 @@
         row.type === "folder" ? "Creating folder" : "Checking destination",
       );
       try {
-        stop(signal);
-        if (Date.now() - start >= maxMs) throw fail("time_limit");
+        checkStop();
         const segments = parts(row.path);
         const local = await fs.inspect(segments, row.type, true);
+        checkStop();
+        if (halted) return;
         if (local.status !== "missing") {
           result.skipped++;
           update("Skipped", true, "existing_file_preserved");
-          continue;
+          return;
         }
         if (row.type === "folder") {
           await fs.directory(segments, true, true);
@@ -249,21 +280,30 @@
             });
             await new Promise((r) => setTimeout(r, 0));
           }
-          continue;
+          return;
         }
         if (row.type !== "file") throw fail("unsupported_type");
-        if (result.downloaded >= maxFiles || result.bytes + row.size > maxBytes)
+        if (!Number.isSafeInteger(row.size) || row.size < 0)
+          throw fail("unknown_remote_size");
+        if (
+          result.downloaded + reservedFiles >= maxFiles ||
+          result.bytes + reservedBytes + row.size > maxBytes
+        )
           throw fail("download_budget");
+        reservedBytes += row.size;
+        reservedFiles++;
+        reserved = true;
         update("Requesting file");
-        const response = await fetchFile(row, signal);
+        response = await fetchFile(row, runSignal);
         if (!response?.body) throw fail("missing_download_stream");
         // Recheck after the network request; never intentionally replace an existing file.
         if ((await fs.inspect(segments, "file", true)).status !== "missing") {
           await response.body.cancel();
           result.skipped++;
           update("Skipped", true, "existing_file_preserved");
-          continue;
+          return;
         }
+        checkStop();
         const parent = await fs.directory(segments.slice(0, -1), true, true);
         const handle = await parent.getFileHandle(segments.at(-1), {
           create: true,
@@ -273,19 +313,24 @@
           await response.body.cancel();
           result.skipped++;
           update("Skipped", true, "existing_file_preserved");
-          continue;
+          return;
         }
+        checkStop();
         writable = await handle.createWritable({
           keepExistingData: false,
           mode: "exclusive",
         });
         const reader = response.body.getReader();
         let bytes = 0;
+        const abortRead = () => {
+          reader.cancel().catch(() => {});
+        };
+        runSignal.addEventListener("abort", abortRead, { once: true });
         try {
           while (true) {
-            stop(signal);
-            if (Date.now() - start >= maxMs) throw fail("time_limit");
+            checkStop();
             const { done, value } = await reader.read();
+            checkStop();
             if (done) break;
             bytes += value.byteLength;
             if (bytes > row.size || result.bytes + bytes > maxBytes)
@@ -296,30 +341,47 @@
             update("Downloading", firstChunk);
           }
           if (bytes !== row.size) throw fail("download_size_mismatch");
-          stop(signal);
+          checkStop();
           update("Saving file");
           await writable.close();
           writable = null;
           if ((await handle.getFile()).size !== row.size)
             throw fail("local_size_mismatch");
+          reservedBytes -= row.size;
+          reservedFiles--;
+          reserved = false;
           result.downloaded++;
           result.bytes += bytes;
           result.files.push({ path: row.path, bytes, status: "downloaded" });
           update("Downloaded");
         } finally {
+          runSignal.removeEventListener("abort", abortRead);
           await reader.cancel().catch(() => {});
           reader.releaseLock();
         }
       } catch (e) {
-        if (writable) await writable.abort().catch(() => {});
         const code =
-          e.code ||
-          (signal?.aborted ? "cancelled" : e.name || "download_failed");
+          (runSignal.aborted
+            ? runSignal.reason?.code === "time_limit"
+              ? "time_limit"
+              : "cancelled"
+            : null) ||
+          (typeof e.code === "string" ? e.code : e.name || "download_failed");
+        if (/limit|budget|cancelled|QuotaExceeded|NotAllowed/.test(code)) {
+          halted = true;
+          if (code !== "download_budget") runController.abort(fail(code));
+        }
+        if (writable) await writable.abort().catch(() => {});
         result.issues.push({ path: row.path, code });
         update("Issue", true, code);
-        // A new empty placeholder may remain after a failed write. Never remove or
-        // overwrite it automatically; the next check reports the size discrepancy.
-        if (/limit|budget|cancelled|QuotaExceeded|NotAllowed/.test(code)) break;
+        // Preserve any empty placeholder; report it on the next disk check.
+      } finally {
+        if (response?.body && !response.body.locked)
+          await response.body.cancel().catch(() => {});
+        if (reserved) {
+          reservedBytes -= row.size;
+          reservedFiles--;
+        }
       }
       progress({
         downloaded: result.downloaded,
@@ -327,6 +389,24 @@
         foldersCreated: result.foldersCreated,
         errors: result.issues.length,
       });
+    }
+    try {
+      // Prepare folders in order before independent file workers begin.
+      for (const row of missing.filter((x) => x.type === "folder")) {
+        if (halted) break;
+        await processRow(row);
+      }
+      const queue = missing.filter((x) => x.type !== "folder");
+      let next = 0;
+      const worker = async () => {
+        while (!halted && next < queue.length) {
+          const row = queue[next++];
+          await processRow(row);
+        }
+      };
+      await Promise.all(Array.from({ length: concurrency }, worker));
+    } finally {
+      clearTimeout(timer);
     }
     result.finished = new Date().toISOString();
     result.status = result.issues.length ? "partial" : "finished";
@@ -372,6 +452,17 @@
     cancel.disabled =
     save.disabled =
       true;
+  const concurrencyLabel = el("label", "Parallel downloads ");
+  const parallel = document.createElement("select");
+  parallel.setAttribute("aria-label", "Parallel downloads");
+  for (let n = 1; n <= 5; n++) {
+    const option = document.createElement("option");
+    option.value = String(n);
+    option.textContent = String(n);
+    parallel.append(option);
+  }
+  parallel.value = "3";
+  concurrencyLabel.append(parallel);
   const detail = el("pre", "");
   let root, plan, result, controller, inventory;
   const scanButton = [...section.querySelectorAll("button")].find(
@@ -380,7 +471,7 @@
   const closeButton = [...section.querySelectorAll("button")].find(
     (x) => x.textContent === "Close",
   );
-  const controls = [choose, check, download, test];
+  const controls = [choose, check, download, test, parallel];
   const busy = (value) => {
     window.__oneDriveDiskBusy = value;
     controls.forEach((x) => (x.disabled = value));
@@ -477,6 +568,7 @@
       window.__oneDriveActivity?.({ stage: "Starting", reset: true });
       result = await populate({
         plan: selectedPlan,
+        concurrency: Number(parallel.value),
         root,
         signal: controller.signal,
         activity: (entry) => window.__oneDriveActivity?.(entry),

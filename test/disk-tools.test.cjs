@@ -316,6 +316,7 @@ test("browser controls bound sample downloads and prevent closing during writes"
     AbortController,
     AbortSignal,
     setTimeout,
+    clearTimeout,
     console: { log() {} },
     fetch: async (url) => {
       if (url.includes("/items/")) {
@@ -344,12 +345,18 @@ test("browser controls bound sample downloads and prevent closing during writes"
     nodes.find((x) => x.tag === "button" && x.textContent === name);
   await button("Choose local folder").onclick();
   await button("Check disk").onclick();
+  const setting = nodes.find((x) => x.tag === "select");
+  assert.equal(setting.value, "3");
+  assert.equal(setting.children.length, 5);
   const run = button("Test 3 small files").onclick();
+  assert.equal(setting.disabled, true);
   assert.equal(close.disabled, true);
   assert.equal(scan.disabled, true);
   release();
   await run;
   assert.equal(browser.__oneDriveDownloadResult.downloaded, 3);
+  assert.equal(browser.__oneDriveDownloadResult.concurrency, 3);
+  assert.equal(setting.disabled, false);
   assert.equal(browser.__oneDriveDownloadResult.scope, "small_file_test");
   assert.equal(browser.__oneDriveDiskPlan.items.length, 5);
   assert.equal(close.disabled, false);
@@ -397,3 +404,241 @@ test("activity reports transfer bytes, final commit, skips and failures without 
   assert.doesNotMatch(JSON.stringify(events), /private URL/);
   assert.equal(root.entries.get("B").writes, 0);
 });
+
+test(
+  "parallel workers overlap at the selected limit and copy every file once",
+  { timeout: 3000 },
+  async () => {
+    for (const concurrency of [1, 3, 5]) {
+      const root = new Directory();
+      const plan = await checkDisk({
+        report: report(
+          Array.from({ length: 8 }, (_, i) =>
+            row(String(i), "/Shared/File" + i),
+          ),
+        ),
+        root,
+      });
+      let active = 0,
+        peak = 0;
+      const ids = [];
+      const result = await populate({
+        plan,
+        root,
+        concurrency,
+        maxFiles: 8,
+        maxBytes: 24,
+        fetchFile: async (item) => {
+          ids.push(item.id);
+          active++;
+          peak = Math.max(peak, active);
+          return {
+            body: new ReadableStream({
+              start(c) {
+                c.enqueue(new TextEncoder().encode("abc"));
+                setTimeout(() => {
+                  active--;
+                  c.close();
+                }, 10);
+              },
+            }),
+          };
+        },
+      });
+      assert.equal(peak, concurrency);
+      assert.equal(result.downloaded, 8);
+      assert.equal(result.bytes, 24);
+      assert.equal(new Set(ids).size, 8);
+      const dir = root.entries.get("Shared");
+      assert.equal(dir.entries.size, 8);
+      for (const f of dir.entries.values()) {
+        assert.equal(f.writes, 1);
+        assert.equal(f.data.length, 3);
+      }
+    }
+  },
+);
+
+test("parallel downloads reserve one shared file and byte budget", async () => {
+  for (const limits of [{ maxBytes: 6 }, { maxFiles: 2 }]) {
+    const root = new Directory();
+    const plan = await checkDisk({
+      report: report(
+        Array.from({ length: 8 }, (_, i) => row(String(i), "/F" + i)),
+      ),
+      root,
+    });
+    let fetched = 0;
+    const result = await populate({
+      plan,
+      root,
+      concurrency: 5,
+      ...limits,
+      fetchFile: async () => {
+        fetched++;
+        await new Promise((r) => setTimeout(r, 5));
+        return response("abc");
+      },
+    });
+    assert.equal(fetched, 2);
+    assert.equal(result.downloaded, 2);
+    assert.equal(result.bytes, 6);
+    assert.equal(result.status, "partial");
+    assert.ok(result.issues.some((x) => x.code === "download_budget"));
+  }
+});
+
+test(
+  "Stop cancels all in-flight readers without starting queued files",
+  { timeout: 2000 },
+  async () => {
+    const root = new Directory();
+    const controller = new AbortController();
+    const plan = await checkDisk({
+      report: report(
+        Array.from({ length: 8 }, (_, i) => row(String(i), "/F" + i)),
+      ),
+      root,
+    });
+    let started = 0,
+      cancelled = 0;
+    const result = await populate({
+      plan,
+      root,
+      concurrency: 3,
+      signal: controller.signal,
+      fetchFile: async () => {
+        started++;
+        if (started === 3) setTimeout(() => controller.abort(), 10);
+        return {
+          body: new ReadableStream({
+            start(c) {
+              c.enqueue(new Uint8Array([1]));
+            },
+            cancel() {
+              cancelled++;
+            },
+          }),
+        };
+      },
+    });
+    assert.equal(started, 3);
+    assert.equal(cancelled, 3);
+    assert.equal(result.downloaded, 0);
+    assert.equal(result.issues.length, 3);
+    assert.ok(result.issues.every((x) => x.code === "cancelled"));
+    for (const f of root.entries.values()) assert.equal(f.data.length, 0);
+  },
+);
+
+test(
+  "global deadline interrupts stalled parallel readers",
+  { timeout: 2000 },
+  async () => {
+    const root = new Directory();
+    const plan = await checkDisk({
+      report: report([row("a", "/A"), row("b", "/B")]),
+      root,
+    });
+    const result = await populate({
+      plan,
+      root,
+      concurrency: 3,
+      maxMs: 20,
+      fetchFile: async () => ({ body: new ReadableStream({}) }),
+    });
+    assert.equal(result.downloaded, 0);
+    assert.equal(result.issues.length, 2);
+    assert.ok(result.issues.every((x) => x.code === "time_limit"));
+  },
+);
+
+test("invalid concurrency and duplicate destinations fail before writes", async () => {
+  const root = new Directory();
+  const plan = await checkDisk({ report: report([row("a", "/A")]), root });
+  for (const concurrency of [0, 6, 1.5])
+    await assert.rejects(
+      populate({ plan, root, concurrency }),
+      /invalid_concurrency/,
+    );
+  await assert.rejects(
+    populate({
+      plan: { ...plan, items: [...plan.items, ...plan.items] },
+      root,
+      concurrency: 5,
+    }),
+    /duplicate_download_path/,
+  );
+  assert.equal(root.creates, 0);
+});
+
+test("one file failure does not prevent independent parallel copies", async () => {
+  const root = new Directory();
+  const plan = await checkDisk({
+    report: report(
+      Array.from({ length: 6 }, (_, i) => row(String(i), "/F" + i)),
+    ),
+    root,
+  });
+  const result = await populate({
+    plan,
+    root,
+    concurrency: 3,
+    fetchFile: async (item) => {
+      if (item.id === "1")
+        throw Object.assign(Error("unavailable"), {
+          code: "download_http_404",
+        });
+      return response("abc");
+    },
+  });
+  assert.equal(result.downloaded, 5);
+  assert.equal(result.issues.length, 1);
+  assert.equal(result.status, "partial");
+});
+
+test(
+  "storage denial stops the queue and cancels peer streams",
+  { timeout: 2000 },
+  async () => {
+    const root = new Directory();
+    const plan = await checkDisk({
+      report: report(
+        Array.from({ length: 8 }, (_, i) => row(String(i), "/F" + i)),
+      ),
+      root,
+    });
+    let requests = 0,
+      cancelled = 0;
+    const original = root.getFileHandle.bind(root);
+    root.getFileHandle = async (name, options) => {
+      const f = await original(name, options);
+      if (name === "F0")
+        f.createWritable = async () => {
+          await new Promise((r) => setTimeout(r, 10));
+          throw error("NotAllowedError");
+        };
+      return f;
+    };
+    const result = await populate({
+      plan,
+      root,
+      concurrency: 3,
+      fetchFile: async () => {
+        requests++;
+        return {
+          body: new ReadableStream({
+            cancel() {
+              cancelled++;
+            },
+          }),
+        };
+      },
+    });
+    assert.equal(requests, 3);
+    assert.equal(cancelled, 3);
+    assert.equal(result.downloaded, 0);
+    assert.ok(result.issues.some((x) => x.code === "NotAllowedError"));
+    assert.equal(result.issues.length, 3);
+  },
+);

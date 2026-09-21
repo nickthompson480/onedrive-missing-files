@@ -103,3 +103,17 @@ and date-repair skips. Search by path or reason, filter by source, and browse
 50 issues per page. Size conflicts show both local and OneDrive sizes with a
 suggested next step. Existing files are still preserved. Save the disk report
 for full download results; refreshing the page clears this session's activity.
+
+## Parallel downloads
+
+Choose **Parallel downloads** under Files & dates before starting: **1–5**, with
+**3** selected by default. Each active file has its own progress card. The
+setting is locked during a run. Larger settings may help when OneDrive or your
+connection can handle more simultaneous requests; use 1 for a sequential copy.
+
+All workers share the same download limits. Folder creation happens first.
+When a budget is reached, already admitted transfers finish and no new files
+start. Stop, the overall deadline, or a storage/permission failure cancels active
+transfers and stops the queue. Completed files are preserved; check disk again
+before continuing. A failed write may leave an empty placeholder, which is
+reported on the next check and never automatically overwritten.

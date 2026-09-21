@@ -71,3 +71,16 @@ and disabling Stop after the run finished.
 All four hosted CI jobs passed at 3043f27 (run 35643549750). The published
 v1.2.0 seven-file ZIP was downloaded and matched the local build byte-for-byte;
 its SHA-256 and archive integrity checks passed.
+
+## Version 1.3 evidence
+
+41 JavaScript tests pass. Tests cover exact 1/3/5 concurrent stream peaks,
+shared budgets (including exact full-run limits), one write per path, duplicate
+rejection, cancellation of every stalled reader, global deadline interruption,
+and disabled concurrency settings during runs. Synthetic browser checks show
+five independent progress cards across tabs, the 1–5 selector defaulting to 3,
+and completed files moving to activity with no active cards remaining.
+Live Windows signed-in browser acceptance remains pending.
+
+Independent file failures continue other copies; storage denial cancels peer
+streams and stops queued work. Both behaviors have dedicated tests.

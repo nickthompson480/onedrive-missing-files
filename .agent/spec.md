@@ -35,3 +35,10 @@ Show the current path, stream progress, average speed, stage and file counts.
 Keep stop available across accessible tabs. Provide bounded activity history
 and paginated/searchable issues from inventory, disk, downloads and date repair.
 Render filenames as text; never expose signed URLs or request credentials.
+
+## Parallel downloads (v1.3)
+
+Offer a 1–5 concurrency setting, default 3 in the UI. Prepare folders before
+workers. Reserve shared file/byte budgets before fetch, preserve existing files,
+and cancel all active streams on Stop or fatal storage/permission failures.
+Show each active file independently; retain activity and issue reporting.

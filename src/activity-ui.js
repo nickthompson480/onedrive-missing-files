@@ -121,6 +121,9 @@
   meter.setAttribute("aria-label", "Current file download progress");
   const info = make("p", "", current);
   info.className = "od-muted";
+  const transfers = make("div", null, current);
+  transfers.className = "od-list";
+  const active = new Map();
   const halt = make("button", "Stop downloads", current);
   halt.dataset.navigation = "true";
   halt.disabled = true;
@@ -232,13 +235,45 @@
   window.__oneDriveActivity = (entry) => {
     if (entry.reset) {
       activeIssues = [];
+      active.clear();
       latest = null;
       path.textContent = "Preparing the next download…";
       info.textContent = "";
       meter.value = 0;
     }
     if (entry.path) latest = entry;
-    stage.textContent = entry.stage;
+    if (
+      entry.path &&
+      [
+        "Checking destination",
+        "Requesting file",
+        "Downloading",
+        "Saving file",
+      ].includes(entry.stage)
+    )
+      active.set(entry.path, entry);
+    else if (entry.path) active.delete(entry.path);
+    if (entry.finished) active.clear();
+    transfers.replaceChildren();
+    for (const item of active.values()) {
+      const card = make("div", null, transfers);
+      card.className = "od-card";
+      make("div", item.path, card).className = "od-path";
+      make("div", item.stage, card);
+      const bar = make("progress", null, card);
+      bar.max = 100;
+      bar.value = item.size ? Math.min(100, (item.bytes / item.size) * 100) : 0;
+      bar.setAttribute("aria-label", "Download progress: " + item.path);
+      make(
+        "p",
+        `${bytes(item.bytes)} / ${bytes(item.size)} | ${Math.round(bar.value)}% | ${bytes(item.elapsedMs > 0 ? item.bytes / (item.elapsedMs / 1000) : 0)}/s average`,
+        card,
+      ).className = "od-muted";
+    }
+    path.hidden = meter.hidden = info.hidden = active.size > 0;
+    stage.textContent = active.size
+      ? `${active.size} active downloads | ${entry.completed} / ${entry.total} files completed`
+      : entry.stage;
     halt.disabled = !!entry.finished;
     if (latest) {
       path.textContent = latest.path;
