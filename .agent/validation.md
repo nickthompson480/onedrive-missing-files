@@ -102,3 +102,8 @@ The user's private HAR informed diagnosis but was not executed or published.
 Exact live Windows NotFoundError cause remains unresolved; collect v1.4 issue
 export after a retry. Browser restrictions are researched primary-source facts,
 not proof of a particular file being malicious. Source links are in behavior.md.
+
+All four hosted jobs passed at ccb3647 (run 35647452489). Published v1.4.0 ZIP
+and checksum were downloaded and verified against the local build; seven-file
+allowlist and archive integrity passed. Final browser check also confirmed the
+recovery destination is named in the completion status.

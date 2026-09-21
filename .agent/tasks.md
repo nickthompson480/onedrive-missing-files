@@ -48,4 +48,4 @@ tags: []
 - [x] Record exact disk/network steps and distinguish empty-file mismatches.
 - [x] Add issue-type filters, privacy-filtered detail export, and separate-folder recovery.
 - [x] Verify fault injection, preservation, overlap rejection, and synthetic browser UI.
-- [ ] Verify hosted checks and publish v1.4.0.
+- [x] Verify hosted checks and publish v1.4.0; download and verify release assets.
