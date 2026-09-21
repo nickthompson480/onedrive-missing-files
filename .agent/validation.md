@@ -25,4 +25,6 @@ tags: [validation]
 
 ## Gaps
 
-Hosted CI and public release verification are pending. Native Windows/Edge sign-in, folder permission, long-path behavior, and live downloads need acceptance testing. Simulated filesystem tests do not prove native browser behavior. Keep the destination idle; browser APIs do not guarantee atomic create-if-absent against unrelated applications.
+Initial hosted CI passed on macOS and Linux (Node 22 and 24). Windows checkout
+converted text to CRLF and failed formatting; `.gitattributes` now enforces LF.
+The Windows rerun and public release verification are pending. Native Windows/Edge sign-in, folder permission, long-path behavior, and live downloads need acceptance testing. Simulated filesystem tests do not prove native browser behavior. Keep the destination idle; browser APIs do not guarantee atomic create-if-absent against unrelated applications.
