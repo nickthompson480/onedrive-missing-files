@@ -123,7 +123,7 @@ network: one initial destination selection, automatic recovery of a folder whose
 named lookup fails, successful child download and preserved original, verified
 one-file ZIP export, locked controls during export, stopped stalled stream and
 ZIP issue reporting. These checks do not reproduce the real Windows provider
-failure. Hosted checks and v1.5 release verification are still pending.
+failure. Final hosted checks and release evidence follow below.
 
 The first Windows hosted run caught a test-probe encoding mismatch: Python's
 Windows console encoding was decoded as UTF-8 by Node. The ZIP filename itself
@@ -133,4 +133,14 @@ production helper, before rerunning hosted checks.
 All four hosted jobs passed at 1bdd6ec (run 35654781967), including native
 Windows restoration and dates. A final regression now also groups simultaneous
 parent failures across parallel workers into one result/UI issue; 56 local
-JavaScript tests pass. Hosted checks must rerun on this final change.
+JavaScript tests pass. Final hosted checks passed as recorded below.
+
+Final v1.5 evidence: all four hosted jobs passed at 34e26d5 (run 35654982271),
+including Windows native restoration, creation/modification dates and junction
+rejection. The final synthetic browser run produced exactly one download issue
+for six files under a parent that became unavailable after Check disk, with zero
+content requests and an unchanged existing file. Its issue card displayed the
+six-file count and automatic-lookup guidance; no individual selection control.
+Published v1.5.0 ZIP/checksum downloaded and verified: byte-identical to the final
+local build, SHA-256 matched, nine-file allowlist and ZIP integrity passed.
+No live Windows provider access was available; that acceptance remains pending.

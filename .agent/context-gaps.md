@@ -16,7 +16,7 @@ tags: [context, discovery]
 
 - 2026-09-21: User confirmed the Windows destination is inside OneDrive; the
   visible sync arrows indicate syncing/pending status. Explorer visibility does
-  not establish ordinary browser filesystem access or hydration. Need an
-  outside-OneDrive comparison test before attributing local folder-creation
-  NotFoundError to sync or Files On-Demand. No Windows machine access is available
+  not establish ordinary browser filesystem access or hydration. Retry v1.5 automatic lookup on the
+  affected destination before further diagnosis. A location comparison may help
+  distinguish sync/provider involvement, but no root cause is yet established. No Windows machine access is available
   in this task; this finding comes from user reports and screenshots.

@@ -57,4 +57,4 @@ tags: []
 - [x] Export exactly one restricted original file per bounded, verified ZIP.
 - [x] Add native preview, missing-only restore, source dates and verified cleanup.
 - [x] Test archive interoperability, preservation and synthetic browser flows.
-- [ ] Pass hosted checks, publish v1.5.0 and verify downloaded release assets.
+- [x] Pass hosted checks, publish v1.5.0 and verify downloaded release assets.
