@@ -41,3 +41,11 @@ tags: []
 - [x] Add selector and individual active-file progress cards.
 - [x] Validate concurrency, error isolation, cancellation and synthetic browser UI.
 - [x] Pass hosted checks, publish v1.3.0 and verify downloaded release assets.
+
+## Version 1.4 Windows diagnostics and recovery
+
+- [x] Research primary Chromium policies and File System Standard errors.
+- [x] Record exact disk/network steps and distinguish empty-file mismatches.
+- [x] Add issue-type filters, privacy-filtered detail export, and separate-folder recovery.
+- [x] Verify fault injection, preservation, overlap rejection, and synthetic browser UI.
+- [ ] Verify hosted checks and publish v1.4.0.

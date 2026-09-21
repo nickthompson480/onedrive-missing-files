@@ -367,6 +367,22 @@ test("browser controls bound sample downloads and prevent closing during writes"
       .length,
     2,
   );
+  const recoveryRoot = new Directory("recovery");
+  root.resolve = recoveryRoot.resolve = async () => null;
+  const first = root.entries.get("File0");
+  first.data = new Uint8Array(0);
+  await button("Check disk").onclick();
+  assert.equal(button("Copy size mismatches elsewhere").disabled, false);
+  context.showDirectoryPicker = async () => recoveryRoot;
+  await button("Copy size mismatches elsewhere").onclick();
+  assert.equal(
+    browser.__oneDriveDownloadResult.scope,
+    "separate_recovery_folder",
+  );
+  assert.equal(browser.__oneDriveDownloadResult.downloaded, 1);
+  assert.equal(first.data.length, 0);
+  assert.equal(recoveryRoot.entries.get("File0").data.length, 20000);
+  assert.equal(browser.__oneDriveDiskPlan.folder, "target");
 });
 
 test("activity reports transfer bytes, final commit, skips and failures without download URLs", async () => {
@@ -642,3 +658,207 @@ test(
     assert.equal(result.issues.length, 3);
   },
 );
+
+test("restricted local names are classified only after a local browser rejection", async () => {
+  const root = new Directory();
+  root.getFileHandle = async () => {
+    throw error("TypeError");
+  };
+  const p = await checkDisk({
+    root,
+    report: report([
+      row("1", "/a.LNK"),
+      row("2", "/b.ini"),
+      row("3", "/c.txt"),
+    ]),
+  });
+  assert.deepEqual(
+    p.items.map((x) => x.reason),
+    [
+      "browser_restricted_file_type",
+      "browser_restricted_file_type",
+      "browser_rejected_name",
+    ],
+  );
+  assert.ok(p.items.every((x) => x.operation === "open_local_file"));
+  const allowed = await checkDisk({
+    root: new Directory(),
+    report: report([row("1", "/a.ini")]),
+  });
+  assert.equal(allowed.items[0].status, "missing");
+});
+
+test("a disappearing file snapshot is a conflict, not permission to recreate it", async () => {
+  const root = new Directory();
+  const f = new File("gone");
+  f.getFile = async () => {
+    throw error("NotFoundError");
+  };
+  root.entries.set("gone", f);
+  const p = await checkDisk({ root, report: report([row("1", "/gone")]) });
+  assert.equal(p.items[0].status, "conflict");
+  assert.equal(p.items[0].operation, "read_local_file");
+  assert.equal(p.items[0].reason, "NotFoundError");
+});
+
+test("failed parent access identifies the parent rather than blaming the file extension", async () => {
+  const root = new Directory();
+  root.getDirectoryHandle = async () => {
+    throw error("TypeError");
+  };
+  const p = await checkDisk({
+    root,
+    report: report([row("1", "/bad/shortcut.lnk")]),
+  });
+  assert.equal(p.items[0].reason, "browser_rejected_name");
+  assert.equal(p.items[0].operation, "open_local_folder");
+  assert.equal(p.items[0].localPath, "/bad");
+});
+
+test("each save failure records its exact operation and cancels the response without raw errors", async () => {
+  for (const step of [
+    "create_local_folder",
+    "create_local_file",
+    "read_local_file",
+    "open_write_stream",
+    "write_local_file",
+    "save_local_file",
+    "verify_local_file",
+  ]) {
+    const root = new Directory();
+    const item = row("1", "/dir/file");
+    const plan = await checkDisk({ root, report: report([item]) });
+    const dir = new Directory("dir");
+    let cancelled = false,
+      reads = 0;
+    const boom = () => {
+      throw Object.assign(error("NotFoundError"), {
+        message: "secret-url-token",
+      });
+    };
+    root.getDirectoryHandle = async (name, { create = false } = {}) => {
+      if (!create) throw error("NotFoundError");
+      if (step === "create_local_folder") boom();
+      return dir;
+    };
+    dir.getFileHandle = async () => {
+      if (step === "create_local_file") boom();
+      return {
+        getFile: async () => {
+          if (
+            step === "read_local_file" ||
+            (step === "verify_local_file" && reads > 0)
+          )
+            boom();
+          return { size: reads++ ? 3 : 0 };
+        },
+        createWritable: async () => {
+          if (step === "open_write_stream") boom();
+          return {
+            write: async () => {
+              if (step === "write_local_file") boom();
+            },
+            close: async () => {
+              if (step === "save_local_file") boom();
+            },
+            abort: async () => {},
+          };
+        },
+      };
+    };
+    const r = await populate({
+      root,
+      plan,
+      fetchFile: async () => ({
+        body: new ReadableStream({
+          start(c) {
+            c.enqueue(new Uint8Array(3));
+          },
+          pull(c) {
+            c.close();
+          },
+          cancel() {
+            cancelled = true;
+          },
+        }),
+      }),
+    });
+    assert.equal(r.issues[0].operation, step);
+    assert.equal(r.issues[0].code, "NotFoundError");
+    assert.equal(r.downloaded, 0);
+    if (
+      [
+        "create_local_folder",
+        "create_local_file",
+        "read_local_file",
+        "open_write_stream",
+      ].includes(step)
+    )
+      assert.equal(cancelled, true);
+    assert.doesNotMatch(JSON.stringify(r), /secret-url-token/);
+  }
+});
+
+test("network TypeError remains distinct from local browser restrictions", async () => {
+  const root = new Directory();
+  const plan = await checkDisk({ root, report: report([row("1", "/a.lnk")]) });
+  const result = await populate({
+    root,
+    plan,
+    fetchFile: async (_, __, setStep) => {
+      setStep("request_download");
+      throw error("TypeError");
+    },
+  });
+  assert.equal(result.issues[0].code, "TypeError");
+  assert.equal(result.issues[0].operation, "request_download");
+});
+
+test("recovery copies only mismatches into a separate tree and preserves both originals and recovery files", async () => {
+  const { recoveryPlan } = require("../src/disk-tools.js");
+  const originalRoot = new Directory(),
+    root = new Directory();
+  originalRoot.resolve = root.resolve = async () => null;
+  const empty = new File("empty"),
+    different = new File("different", "keep original");
+  originalRoot.entries.set("empty", empty);
+  originalRoot.entries.set("different", different);
+  const saved = new File("different", "keep recovery");
+  root.entries.set("different", saved);
+  const inventory = report([
+    row("1", "/empty"),
+    row("2", "/different"),
+    row("3", "/missing"),
+  ]);
+  const plan = await checkDisk({ report: inventory, root: originalRoot });
+  assert.equal(plan.items[0].reason, "empty_local_file");
+  assert.equal(plan.items[1].reason, undefined);
+  const recovery = await recoveryPlan({
+    plan,
+    report: inventory,
+    root,
+    originalRoot,
+  });
+  assert.equal(recovery.items.length, 2);
+  const result = await populate({
+    root,
+    plan: recovery,
+    fetchFile: async () => response("abc"),
+  });
+  assert.equal(result.downloaded, 1);
+  assert.equal(root.entries.has("missing"), false);
+  assert.equal(empty.writes + different.writes + saved.writes, 0);
+  assert.equal(root.entries.get("empty").data.toString(), "abc");
+  for (const [a, b] of [
+    [[], null],
+    [["child"], null],
+    [null, ["parent"]],
+  ]) {
+    originalRoot.resolve = async () => a;
+    root.resolve = async () => b;
+    await assert.rejects(
+      recoveryPlan({ plan, report: inventory, root, originalRoot }),
+      /choose_separate_recovery_folder/,
+    );
+  }
+});

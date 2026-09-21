@@ -42,3 +42,13 @@ Offer a 1–5 concurrency setting, default 3 in the UI. Prepare folders before
 workers. Reserve shared file/byte budgets before fetch, preserve existing files,
 and cancel all active streams on Stop or fatal storage/permission failures.
 Show each active file independently; retain activity and issue reporting.
+
+## Windows diagnostics and recovery (v1.4)
+
+Attach controlled operation identifiers and relative paths to local failures,
+without exporting raw errors or signed URLs. Classify known browser-restricted
+types only following local name rejection. Distinguish empty local mismatches
+without asserting their provenance. Support separate-folder comparison copies
+of size mismatches; reject overlapping roots and preserve existing recovery
+files. A disappearing getFile snapshot remains a conflict. Do not claim a
+Windows root cause without runtime evidence.

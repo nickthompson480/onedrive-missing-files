@@ -117,3 +117,12 @@ start. Stop, the overall deadline, or a storage/permission failure cancels activ
 transfers and stops the queue. Completed files are preserved; check disk again
 before continuing. A failed write may leave an empty placeholder, which is
 reported on the next check and never automatically overwritten.
+
+### Windows troubleshooting and recovery
+
+The Issues tab shows failure steps, type filters and **Save issue details**.
+Empty files and nonempty size mismatches have separate guidance. Use **Copy size
+mismatches elsewhere** in Files & dates to download comparison copies to a
+separate folder; both originals and existing recovery files stay unchanged.
+Browser-restricted file types need OneDrive's own download controls or desktop
+app. See [Windows issues and recovery](docs/behavior.md#windows-issues-and-recovery-v14).

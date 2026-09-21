@@ -31,3 +31,34 @@ test("issues combine all sources with only display fields", () => {
   assert.equal(bytes(1024), "1.0 KiB");
   assert.equal(bytes(undefined), "Unknown size");
 });
+
+test("diagnostics explain different causes, sanitize fields and distinguish recovery destination", () => {
+  const { category } = require("../src/activity-ui.js");
+  assert.equal(category("empty_local_file"), "Empty local files");
+  assert.equal(category("existing_size_mismatch"), "Different local files");
+  assert.match(advice("browser_restricted_file_type"), /Chrome\/Edge rejected/);
+  assert.match(advice("empty_local_file"), /origin is unknown/);
+  assert.match(
+    advice("NotFoundError", "open_write_stream"),
+    /not a OneDrive HTTP 404/,
+  );
+  assert.match(advice("TypeError", "request_download"), /network transfer/);
+  const rows = collectIssues({
+    result: {
+      folder: "Recovery",
+      issues: [
+        {
+          path: "/a",
+          code: "NotFoundError",
+          operation: "open_write_stream",
+          message: "secret",
+          url: "signed-link",
+          bytes: 0,
+        },
+      ],
+    },
+  });
+  assert.equal(rows[0].operation, "open_write_stream");
+  assert.equal(rows[0].folder, "Recovery");
+  assert.doesNotMatch(JSON.stringify(rows), /secret|signed-link|message/);
+});

@@ -110,3 +110,51 @@ node --test test/*.test.cjs
 
 Tests use synthetic data and fake File System Access handles. Private live
 exports belong in ignored local/private locations and must not be committed.
+
+## Windows issues and recovery (v1.4)
+
+The Issues tab separates browser restrictions, empty local files, different local
+files, network/OneDrive issues and stopped runs. Filter by type or source, or
+search the filename and failing step. **Save issue details** exports all reported
+issues, including relative paths, destination folder, operation and bytes written
+before failure. It excludes raw exception messages, cookies and signed links.
+Filenames are still private. A new disk check clears previous download issues;
+Activity retains its historical events.
+
+- A local name lookup rejected with `TypeError` for `.lnk`, `.url`, `.scf` or
+  `.ini` is explained as a browser restriction. Classification requires an actual
+  local rejection; a network `TypeError` is not treated as a restricted file type.
+  Other rejected names have separate guidance. Use the OneDrive desktop app or
+  OneDrive's download controls for restricted items, subject to their own checks.
+- `NotFoundError` now includes the failing operation and affected relative path:
+  folder lookup/creation, file lookup/creation, reading file details, opening the
+  write stream, receiving data, writing, saving or verification. A local failure
+  can cancel an otherwise successful HTTP response during cleanup. This does not
+  prove the underlying Windows cause; the precise step is required for diagnosis.
+- Empty local files are preserved and identified separately. They might be
+  interrupted-download placeholders, but the tool cannot establish their origin.
+  Nonempty size differences are also preserved. Equal size is not a content check.
+- **Copy size mismatches elsewhere** in Files & dates opens a second folder
+  picker and copies only those OneDrive files into matching relative paths there.
+  Choose a separate folder outside the original tree (not its ancestor either).
+  The recovery folder is checked before downloads, and existing recovery files
+  are also preserved. Normal limits, Stop, remote identity checks and selected
+  concurrency apply. This does not repair the original tree automatically.
+  Keep both trees idle, compare recovered contents, and decide manually what to keep.
+- A disappeared file during its size inspection now remains an access conflict;
+  it is no longer counted as safely missing. Failed copies are not automatically
+  retried into existing empty files.
+
+Research checked against primary sources on 2026-09-21:
+
+- [Chromium filename validation](https://chromium.googlesource.com/chromium/src/+/main/content/browser/file_system_access/file_system_access_manager_impl.cc)
+  rejects shell shortcut extensions and dangerous file types for filesystem access.
+- [Chromium file-type policy](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/components/safe_browsing/content/resources/download_file_types.asciipb)
+  includes `.ini` as dangerous on Windows. This browser classification is not an
+  assessment that a particular user's file is malicious.
+- [File System Standard](https://fs.spec.whatwg.org/)
+  permits `NotFoundError` when an entry cannot be located and `TypeError` for
+  rejected names. Writes are committed when the write stream closes.
+
+These changes improve diagnosis and safe recovery. They do not claim to fix all
+Windows path, permission, file-lock, security-scanner or filesystem failures.

@@ -37,6 +37,27 @@
     );
     if (blocking.length) throw fail("inventory_has_unresolved_errors");
   }
+  // Keep only controlled operation names and relative paths; never raw messages/URLs.
+  async function operation(step, path, action) {
+    try {
+      return await action();
+    } catch (e) {
+      const name = e.name || "Error";
+      let code = typeof e.code === "string" ? e.code : name;
+      if (
+        name === "TypeError" &&
+        /^(open|create)_local_(file|folder)$/.test(step)
+      )
+        code = /\.(lnk|url|scf|ini)$/i.test(path)
+          ? "browser_restricted_file_type"
+          : "browser_rejected_name";
+      throw Object.assign(fail(code), {
+        name,
+        operation: step,
+        localPath: path,
+      });
+    }
+  }
   function filesystem(root) {
     const cache = new Map([["", root]]);
     async function directory(segments, create = false, fresh = false) {
@@ -48,7 +69,11 @@
           handle = cache.get(prefix);
         else if (handle) {
           try {
-            handle = await handle.getDirectoryHandle(name, { create });
+            handle = await operation(
+              create ? "create_local_folder" : "open_local_folder",
+              prefix,
+              () => handle.getDirectoryHandle(name, { create }),
+            );
           } catch (e) {
             if (e.name === "NotFoundError" && !create) handle = null;
             else throw e;
@@ -62,18 +87,27 @@
     async function inspect(segments, type, fresh = false) {
       const parent = await directory(segments.slice(0, -1), false, fresh);
       if (!parent) return { status: "missing" };
+      const path = "/" + segments.join("/");
+      let handle;
       try {
         if (type === "folder") {
-          await parent.getDirectoryHandle(segments.at(-1));
+          await operation("open_local_folder", path, () =>
+            parent.getDirectoryHandle(segments.at(-1)),
+          );
           return { status: "present" };
         }
-        const handle = await parent.getFileHandle(segments.at(-1));
-        const file = await handle.getFile();
-        return { status: "present", size: file.size };
+        handle = await operation("open_local_file", path, () =>
+          parent.getFileHandle(segments.at(-1)),
+        );
       } catch (e) {
         if (e.name === "NotFoundError") return { status: "missing" };
         throw e;
       }
+      // A handle that disappears during getFile is an access failure, not proof of absence.
+      const file = await operation("read_local_file", path, () =>
+        handle.getFile(),
+      );
+      return { status: "present", size: file.size };
     }
     return { directory, inspect };
   }
@@ -127,12 +161,18 @@
           row.status = local.status;
           if (local.status === "present" && x.type === "file") {
             row.localSize = local.size;
-            if (local.size !== x.size) row.status = "existing_size_mismatch";
+            if (local.size !== x.size) {
+              row.status = "existing_size_mismatch";
+              if (local.size === 0) row.reason = "empty_local_file";
+            }
           }
         }
       } catch (e) {
         row.status = "conflict";
-        row.reason = e.code || e.name || "local_access_error";
+        row.reason =
+          typeof e.code === "string" ? e.code : e.name || "local_access_error";
+        row.operation = e.operation;
+        row.localPath = e.localPath;
       }
       plan.items.push(row);
       plan.counts[row.status] = (plan.counts[row.status] || 0) + 1;
@@ -167,6 +207,32 @@
       counts: { missing: items.length },
       scope: "small_file_test",
     };
+  }
+  async function recoveryPlan({ plan, report, originalRoot, root, signal }) {
+    validateInventory(report);
+    if (plan?.status !== "checked" || plan.inventoryStarted !== report.started)
+      throw fail("check_disk_first");
+    if (
+      (await originalRoot.resolve(root)) !== null ||
+      (await root.resolve(originalRoot)) !== null
+    )
+      throw fail("choose_separate_recovery_folder");
+    const selected = new Set(
+      plan.items
+        .filter(
+          (x) => x.status === "existing_size_mismatch" && x.type === "file",
+        )
+        .map((x) => x.id),
+    );
+    if (!selected.size) throw fail("no_size_mismatches");
+    return checkDisk({
+      report: {
+        ...report,
+        items: report.items.filter((x) => selected.has(x.id)),
+      },
+      root,
+      signal,
+    });
   }
   async function populate({
     plan,
@@ -233,7 +299,9 @@
     result.concurrency = concurrency;
     async function processRow(row) {
       let reserved = false;
-      let writable, response;
+      let writable,
+        response,
+        step = "check_destination";
       const fileStarted = Date.now();
       let fileBytes = 0,
         lastUpdate = 0;
@@ -248,6 +316,7 @@
           bytes: fileBytes,
           stage,
           code,
+          operation: step,
           elapsedMs: now - fileStarted,
           completed: result.downloaded,
           total: totalFiles,
@@ -294,7 +363,10 @@
         reservedFiles++;
         reserved = true;
         update("Requesting file");
-        response = await fetchFile(row, runSignal);
+        step = "request_file";
+        response = await fetchFile(row, runSignal, (value) => {
+          step = value;
+        });
         if (!response?.body) throw fail("missing_download_stream");
         // Recheck after the network request; never intentionally replace an existing file.
         if ((await fs.inspect(segments, "file", true)).status !== "missing") {
@@ -305,21 +377,25 @@
         }
         checkStop();
         const parent = await fs.directory(segments.slice(0, -1), true, true);
-        const handle = await parent.getFileHandle(segments.at(-1), {
-          create: true,
-        });
+        step = "create_local_file";
+        const handle = await operation(step, row.path, () =>
+          parent.getFileHandle(segments.at(-1), { create: true }),
+        );
         // A competing writer may have created a nonempty file between lookup and creation.
-        if ((await handle.getFile()).size !== 0) {
+        if (
+          (await operation("read_local_file", row.path, () => handle.getFile()))
+            .size !== 0
+        ) {
           await response.body.cancel();
           result.skipped++;
           update("Skipped", true, "existing_file_preserved");
           return;
         }
         checkStop();
-        writable = await handle.createWritable({
-          keepExistingData: false,
-          mode: "exclusive",
-        });
+        step = "open_write_stream";
+        writable = await operation(step, row.path, () =>
+          handle.createWritable({ keepExistingData: false, mode: "exclusive" }),
+        );
         const reader = response.body.getReader();
         let bytes = 0;
         const abortRead = () => {
@@ -329,12 +405,14 @@
         try {
           while (true) {
             checkStop();
+            step = "read_download_stream";
             const { done, value } = await reader.read();
             checkStop();
             if (done) break;
             bytes += value.byteLength;
             if (bytes > row.size || result.bytes + bytes > maxBytes)
               throw fail("download_size_mismatch");
+            step = "write_local_file";
             await writable.write(value);
             const firstChunk = fileBytes === 0;
             fileBytes = bytes;
@@ -343,8 +421,10 @@
           if (bytes !== row.size) throw fail("download_size_mismatch");
           checkStop();
           update("Saving file");
+          step = "save_local_file";
           await writable.close();
           writable = null;
+          step = "verify_local_file";
           if ((await handle.getFile()).size !== row.size)
             throw fail("local_size_mismatch");
           reservedBytes -= row.size;
@@ -372,7 +452,15 @@
           if (code !== "download_budget") runController.abort(fail(code));
         }
         if (writable) await writable.abort().catch(() => {});
-        result.issues.push({ path: row.path, code });
+        step = e.operation || step;
+        result.issues.push({
+          path: row.path,
+          code,
+          operation: step,
+          localPath: e.localPath,
+          size: row.size,
+          bytes: fileBytes,
+        });
         update("Issue", true, code);
         // Preserve any empty placeholder; report it on the next disk check.
       } finally {
@@ -412,7 +500,14 @@
     result.status = result.issues.length ? "partial" : "finished";
     return result;
   }
-  const api = { parts, checkDisk, populate, validateInventory, samplePlan };
+  const api = {
+    parts,
+    checkDisk,
+    populate,
+    validateInventory,
+    samplePlan,
+    recoveryPlan,
+  };
   if (typeof module !== "undefined" && module.exports) {
     module.exports = api;
     return;
@@ -445,12 +540,18 @@
     download = el("button", "Download missing"),
     test = el("button", "Test 3 small files"),
     cancel = el("button", "Stop downloads"),
-    save = el("button", "Save disk report");
+    save = el("button", "Save disk report"),
+    recover = el("button", "Copy size mismatches elsewhere");
+  el(
+    "p",
+    "For empty or differing local files, copy the OneDrive versions to a separate folder for review. Originals stay unchanged.",
+  );
   check.disabled =
     download.disabled =
     test.disabled =
     cancel.disabled =
     save.disabled =
+    recover.disabled =
       true;
   const concurrencyLabel = el("label", "Parallel downloads ");
   const parallel = document.createElement("select");
@@ -471,13 +572,17 @@
   const closeButton = [...section.querySelectorAll("button")].find(
     (x) => x.textContent === "Close",
   );
-  const controls = [choose, check, download, test, parallel];
+  const controls = [choose, check, download, test, parallel, recover];
   const busy = (value) => {
     window.__oneDriveDiskBusy = value;
     controls.forEach((x) => (x.disabled = value));
     scanButton.disabled = value;
     closeButton.disabled = value;
     cancel.disabled = !value;
+    if (!value)
+      recover.disabled = !plan?.items.some(
+        (x) => x.status === "existing_size_mismatch",
+      );
   };
   const endpoint = () => {
     const found = performance
@@ -500,7 +605,9 @@
       plan = null;
       window.__oneDriveDiskPlan = null;
       window.__oneDriveDownloadResult = null;
-      download.disabled = test.disabled = true;
+      window.__oneDriveRecoveryPlan = null;
+      window.__oneDriveActivity?.({ clearIssues: true });
+      download.disabled = test.disabled = recover.disabled = true;
       check.disabled = false;
       status.textContent = "Selected: " + root.name + ". Click Check disk.";
     } catch (e) {
@@ -521,6 +628,8 @@
     result = null;
     window.__oneDriveDiskPlan = null;
     window.__oneDriveDownloadResult = null;
+    window.__oneDriveRecoveryPlan = null;
+    window.__oneDriveActivity?.({ clearIssues: true });
     try {
       inventory = window.__oneDriveInventoryReport;
       plan = await checkDisk({
@@ -549,7 +658,7 @@
       download.disabled = test.disabled = !plan;
     }
   };
-  const startDownload = async (sample = false) => {
+  const startDownload = async (sample = false, recovery = false) => {
     if (window.__oneDriveInventoryScanning || window.__oneDriveMetadataBusy) {
       status.textContent = "Wait for the inventory scan to finish.";
       return;
@@ -562,14 +671,29 @@
     busy(true);
     controller = new AbortController();
     try {
+      let targetRoot = root;
+      let selectedPlan = sample ? samplePlan(plan) : plan;
+      if (recovery) {
+        targetRoot = await showDirectoryPicker({
+          id: "onedrive-recovery",
+          mode: "readwrite",
+        });
+        selectedPlan = await recoveryPlan({
+          plan,
+          report: inventory,
+          originalRoot: root,
+          root: targetRoot,
+          signal: controller.signal,
+        });
+        window.__oneDriveRecoveryPlan = selectedPlan;
+      }
       const base = endpoint();
-      const selectedPlan = sample ? samplePlan(plan) : plan;
       window.__oneDriveDownloadResult = null;
       window.__oneDriveActivity?.({ stage: "Starting", reset: true });
       result = await populate({
         plan: selectedPlan,
         concurrency: Number(parallel.value),
-        root,
+        root: targetRoot,
         signal: controller.signal,
         activity: (entry) => window.__oneDriveActivity?.(entry),
         progress: (p) =>
@@ -582,11 +706,12 @@
             " folders created · " +
             p.errors +
             " issues"),
-        fetchFile: async (row, signal) => {
+        fetchFile: async (row, signal, setStep) => {
           const timeout = AbortSignal.any([
             signal,
             AbortSignal.timeout(5 * 60 * 1000),
           ]);
+          setStep("request_metadata");
           const response = await fetch(
             base + "/items/" + encodeURIComponent(row.id),
             {
@@ -598,6 +723,7 @@
             },
           );
           if (!response.ok) throw fail("metadata_http_" + response.status);
+          setStep("read_metadata");
           const meta = await response.json();
           if (
             meta.id !== row.id ||
@@ -624,6 +750,7 @@
             )
           )
             throw fail("unrecognized_download_host");
+          setStep("request_download");
           const content = await fetch(url.href, {
             method: "GET",
             credentials: "omit",
@@ -634,7 +761,11 @@
           return content;
         },
       });
-      result.scope = sample ? "small_file_test" : "all_missing";
+      result.scope = recovery
+        ? "separate_recovery_folder"
+        : sample
+          ? "small_file_test"
+          : "all_missing";
       window.__oneDriveDownloadResult = result;
       window.__oneDriveActivity?.({
         stage:
@@ -642,6 +773,7 @@
         finished: true,
       });
       status.textContent =
+        (recovery ? "Recovery folder: " + targetRoot.name + ". " : "") +
         result.status +
         ": " +
         result.downloaded +
@@ -661,7 +793,12 @@
       );
       save.disabled = false;
     } catch (e) {
-      status.textContent = "Download stopped: " + (e.code || e.name);
+      status.textContent =
+        e.code === "choose_separate_recovery_folder"
+          ? "Choose a separate recovery folder outside the original folder tree. No copies started."
+          : recovery && e.name === "AbortError"
+            ? "Recovery folder selection cancelled."
+            : "Download stopped: " + (e.code || e.name);
       window.__oneDriveActivity?.({
         stage: "Issue",
         code: e.code || e.name,
@@ -674,12 +811,22 @@
   };
   download.onclick = () => startDownload(false);
   test.onclick = () => startDownload(true);
+  recover.onclick = () => startDownload(false, true);
   cancel.onclick = () => controller?.abort();
   save.onclick = () => {
     const url = URL.createObjectURL(
-      new Blob([JSON.stringify({ plan, result }, null, 2)], {
-        type: "application/json",
-      }),
+      new Blob(
+        [
+          JSON.stringify(
+            { plan, result, recoveryPlan: window.__oneDriveRecoveryPlan },
+            null,
+            2,
+          ),
+        ],
+        {
+          type: "application/json",
+        },
+      ),
     );
     const a = document.createElement("a");
     a.href = url;

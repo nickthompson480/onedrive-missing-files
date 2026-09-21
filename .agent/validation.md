@@ -88,3 +88,17 @@ streams and stops queued work. Both behaviors have dedicated tests.
 All four hosted CI jobs passed at e3d5458 (run 35644305355). Published v1.3.0
 ZIP and checksum were downloaded and verified against the reviewed local build;
 archive integrity and seven-file allowlist passed.
+
+## Version 1.4 evidence
+
+48 JavaScript tests pass. New fault injection covers seven local save steps,
+parent rejection, disappearing file snapshots, local versus network TypeError,
+recovery scope, overlapping-folder rejection and preservation in both trees.
+Synthetic browser acceptance exercised actual disk controls and issue UI:
+restricted/empty/differing-file guidance, NotFoundError at opening write stream,
+type filtering, export of all issues while filtered, and recovery of two files
+with unchanged originals. No real account requests or local files were used.
+The user's private HAR informed diagnosis but was not executed or published.
+Exact live Windows NotFoundError cause remains unresolved; collect v1.4 issue
+export after a retry. Browser restrictions are researched primary-source facts,
+not proof of a particular file being malicious. Source links are in behavior.md.
