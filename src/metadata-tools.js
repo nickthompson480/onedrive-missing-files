@@ -12,6 +12,7 @@
     origin,
     request,
     signal,
+    resume = null,
     progress = () => {},
     now = Date.now,
     maxMs = 15 * 60 * 1000,
@@ -57,6 +58,44 @@
       sha1: null,
       repairError: x.type === "file" ? "metadata_not_refreshed" : null,
     }));
+    if (resume?.inventoryStarted === report.started) {
+      for (let i = 0; i < items.length; i++) {
+        const row = items[i],
+          previous = resume?.items?.[i];
+        if (
+          row.type !== "file" ||
+          !previous ||
+          previous.repairError !== null ||
+          ["id", "path", "type", "size"].some((k) => previous[k] !== row[k])
+        )
+          continue;
+        const safe = sourceMetadata({
+          fileSystemInfo: {
+            createdDateTime: previous.fileCreated,
+            lastModifiedDateTime: previous.fileModified,
+          },
+          file: {
+            hashes: { sha256Hash: previous.sha256, sha1Hash: previous.sha1 },
+          },
+        });
+        if (
+          !safe.fileCreated ||
+          !safe.fileModified ||
+          (!safe.sha256 && !safe.sha1)
+        )
+          continue;
+        safe.createdSource =
+          previous.createdSource === "driveItem"
+            ? "driveItem"
+            : "fileSystemInfo";
+        safe.modifiedSource =
+          previous.modifiedSource === "driveItem"
+            ? "driveItem"
+            : "fileSystemInfo";
+        Object.assign(row, safe, { repairError: null });
+        refreshed++;
+      }
+    }
     const result = {
       kind: "onedrive-date-repair",
       version: 1,
@@ -80,7 +119,7 @@
     for (let i = 0; i < items.length; i++) {
       const row = items[i],
         original = report.items[i];
-      if (row.type !== "file") continue;
+      if (row.type !== "file" || row.repairError === null) continue;
       try {
         let response;
         for (let attempt = 0; attempt < 4; attempt++) {
@@ -174,7 +213,7 @@
     "Requires a finished inventory. File metadata is refreshed from OneDrive before export.",
   );
   status.setAttribute("role", "status");
-  let controller;
+  let controller, checkpoint, checkpointInventory;
   stop.onclick = () => controller?.abort();
   run.onclick = async () => {
     if (
@@ -205,6 +244,10 @@
       if (!url) throw fail("missing_api_base");
       const result = await prepareMetadata({
         report: window.__oneDriveInventoryReport,
+        resume:
+          checkpointInventory === window.__oneDriveInventoryReport
+            ? checkpoint
+            : null,
         base: url.pathname.split("/_api/")[0] + "/_api/v2.0/drive",
         origin: location.origin,
         signal: controller.signal,
@@ -235,6 +278,11 @@
           };
         },
       });
+      checkpointInventory = window.__oneDriveInventoryReport;
+      checkpoint = result.metadataRefresh.status === "partial" ? result : null;
+      run.textContent = checkpoint
+        ? "Resume date repair export"
+        : "Export date repair JSON";
       window.__oneDriveDateRepairManifest = result;
       const blob = URL.createObjectURL(
         new Blob([JSON.stringify(result, null, 2)], {

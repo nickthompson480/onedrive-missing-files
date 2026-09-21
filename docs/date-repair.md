@@ -10,7 +10,7 @@ Browser file handles cannot set the native creation or modification date. Downlo
 2. Complete **Scan OneDrive**. Download missing files if needed; already-downloaded files can remain where they are.
 3. Click **Export date repair JSON**. The tool refreshes each file's metadata using your existing OneDrive session and downloads `onedrive-date-repair.json`.
 
-Refreshing metadata can take several minutes on a large drive. Partial exports identify skipped or unrefreshed files; the helper skips those entries. Re-export after interrupted metadata collection. The old inventory CSV/JSON alone is not a repair manifest.
+Refreshing metadata can take several minutes on a large drive. Partial exports identify skipped or unrefreshed files; the helper skips those entries. Click **Resume date repair export** after interrupted metadata collection; completed entries are retained in memory while the tab and inventory stay open. A fresh scan resets that checkpoint. The old inventory CSV/JSON alone is not a repair manifest.
 
 OneDrive's `fileSystemInfo` dates are preferred. If a filesystem date is absent, the service-level date is used, and the manifest identifies that fallback. These dates can differ: the service creation time can reflect the upload date rather than the original file creation date. A modified date earlier than the creation date is valid and is preserved. [Microsoft's timestamp documentation](https://learn.microsoft.com/en-us/graph/api/resources/filesysteminfo?view=graph-rest-1.0).
 

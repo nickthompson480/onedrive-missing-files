@@ -134,3 +134,23 @@ test("inventory and CSV retain filesystem dates, hashes and service dates separa
   assert.ok(csv(r).includes("fileCreated"));
   assert.ok(!JSON.stringify(r).includes("private-continuation"));
 });
+
+test("repair metadata resumes beyond a request limit without re-fetching finished files", async () => {
+  const two = { ...row, id: "two", name: "second.bin", path: "/second.bin" };
+  const inventory = { ...report, started: "same-scan", items: [row, two] };
+  const first = await run(meta, { report: inventory, maxRequests: 1 });
+  assert.equal(first.metadataRefresh.status, "partial");
+  const second = await run(
+    { ...meta, id: "two", name: "second.bin" },
+    { report: inventory, resume: first, maxRequests: 1 },
+  );
+  assert.equal(second.metadataRefresh.status, "complete");
+  assert.equal(second.metadataRefresh.refreshed, 2);
+  assert.equal(second.metadataRefresh.requests, 1);
+  const changed = await run(meta, {
+    report: { ...inventory, started: "new-scan" },
+    resume: first,
+    maxRequests: 1,
+  });
+  assert.equal(changed.metadataRefresh.status, "partial");
+});

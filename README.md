@@ -2,7 +2,7 @@
 
 List your **OneDrive Personal** files and folders, compare them with a local folder, and download the files that are missing.
 
-Runs inside your signed-in OneDrive tab in desktop **Chrome or Edge**. No app registration, separate login, extension, or installed OneDrive client is required. The downloaded tool has no runtime dependencies.
+Runs inside your signed-in OneDrive tab in desktop **Chrome or Edge**. No app registration, separate login, extension, or installed OneDrive client is required. The browser tool has no runtime dependencies; optional date repair requires Python 3.11 or newer.
 
 ## Get started
 
