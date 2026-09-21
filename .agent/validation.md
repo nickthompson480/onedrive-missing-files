@@ -110,7 +110,7 @@ recovery destination is named in the completion status.
 
 ## Version 1.5 evidence
 
-55 JavaScript tests pass. New tests cover read-before-create, automatic exact
+56 JavaScript tests pass. New tests cover read-before-create, automatic exact
 listing-handle recovery, access failures, parent issue grouping and no doomed
 content fetches. ZIP tests cover single-entry Unicode interoperability through
 the native CLI, hashes, sizes, cancellation, saved-byte readback and preservation.
@@ -129,3 +129,8 @@ The first Windows hosted run caught a test-probe encoding mismatch: Python's
 Windows console encoding was decoded as UTF-8 by Node. The ZIP filename itself
 passed Python's comparison. The probe now emits ASCII-escaped JSON, matching the
 production helper, before rerunning hosted checks.
+
+All four hosted jobs passed at 1bdd6ec (run 35654781967), including native
+Windows restoration and dates. A final regression now also groups simultaneous
+parent failures across parallel workers into one result/UI issue; 56 local
+JavaScript tests pass. Hosted checks must rerun on this final change.

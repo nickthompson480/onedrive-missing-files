@@ -508,27 +508,34 @@
         }
         if (writable) await writable.abort().catch(() => {});
         step = e.operation || step;
-        result.issues.push({
+        const folderFailure =
+          [
+            "open_local_folder",
+            "create_local_folder",
+            "list_local_folder",
+          ].includes(step) && e.localPath;
+        const prior = folderFailure && failedFolders.get(e.localPath);
+        const issue = prior || {
           path: row.path,
           code,
           operation: step,
           localPath: e.localPath,
           size: row.size,
           bytes: fileBytes,
-        });
-        if (
-          [
-            "open_local_folder",
-            "create_local_folder",
-            "list_local_folder",
-          ].includes(step) &&
-          e.localPath
-        ) {
-          const issue = result.issues.at(-1);
-          issue.blockedFiles = 0;
+        };
+        if (!prior) result.issues.push(issue);
+        if (folderFailure) {
+          issue.blockedFiles =
+            (issue.blockedFiles || 0) + (row.type === "file" ? 1 : 0);
+          if (row.type === "file") result.blockedFiles++;
           failedFolders.set(e.localPath, issue);
         }
-        update("Issue", true, code);
+        if (prior) result.skipped++;
+        update(
+          prior ? "Skipped" : "Issue",
+          true,
+          prior ? "parent_folder_unavailable" : code,
+        );
         // Preserve any empty placeholder; report it on the next disk check.
       } finally {
         if (response?.body && !response.body.locked)

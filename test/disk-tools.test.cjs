@@ -931,3 +931,36 @@ test("failed listing is an access conflict and does not create folders", async (
   assert.equal(plan.items[0].operation, "list_local_folder");
   assert.equal(root.creates, 0);
 });
+
+test("parallel files whose existing parent disappears share one folder issue", async () => {
+  const events = [];
+  const root = new Directory();
+  root.entries.set("Folder", new Directory("Folder"));
+  const plan = await checkDisk({
+    root,
+    report: report(
+      Array.from({ length: 6 }, (_, i) => row(String(i), "/Folder/f" + i)),
+    ),
+  });
+  root.getDirectoryHandle = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    throw error("NotFoundError");
+  };
+  let requests = 0;
+  const result = await populate({
+    root,
+    plan,
+    concurrency: 3,
+    activity: (event) => events.push(event),
+    fetchFile: async () => {
+      requests++;
+      return response("abc");
+    },
+  });
+  assert.equal(requests, 0);
+  assert.equal(result.issues.length, 1);
+  assert.equal(result.issues[0].localPath, "/Folder");
+  assert.equal(result.issues[0].blockedFiles, 6);
+  assert.equal(result.blockedFiles, 6);
+  assert.equal(events.filter((x) => x.stage === "Issue").length, 1);
+});

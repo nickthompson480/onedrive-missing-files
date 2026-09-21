@@ -12,7 +12,7 @@ tags: []
 
 - Goal: Maintain a portable OneDrive Personal inventory and missing-file copier.
 - Current work: v1.5 automatic folder discovery and one-file ZIP recovery implemented.
-- Validation: 55 JavaScript tests pass, including JavaScript ZIP → native
+- Validation: 56 JavaScript tests pass, including JavaScript ZIP → native
   restoration/cleanup interoperability. Native tests on the development Mac:
   18 pass, two Windows-only skips. Synthetic browser acceptance passed automatic
   directory discovery, preserved originals, ZIP export, cancellation and issue UI.
