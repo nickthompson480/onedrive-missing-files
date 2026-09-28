@@ -151,8 +151,8 @@ No live Windows provider access was available; that acceptance remains pending.
 synthetic symlink targets, missing paths, size mismatches, unsafe paths, exclusive
 report creation and native-output-to-browser import. Source metadata timestamps
 are matched by instant to accommodate PowerShell JSON date normalization. Windows
-CI additionally runs the checker through Windows PowerShell 5.1. Hosted checks
-and live v1.6 acceptance are pending; no push/release has occurred.
+CI additionally runs the checker through Windows PowerShell 5.1. Final hosted
+checks passed; live native-check/import/recovery acceptance remains pending.
 
 20 Python tests ran: 18 pass, two Windows-only skips. Formatting, build, combined
 script syntax, explicit 11-file package allowlist and archive integrity pass.
@@ -166,3 +166,12 @@ content were not part of this synthetic UI check.
 The attended Windows existing-build comparison separately confirmed three
 successful plain-folder downloads and the failed original parent as a native
 junction. Operational/private evidence is owned by the client project.
+
+All four hosted jobs passed at 23494f0014be23e72bb2f0b7b12cffb480eee593
+(run 36466339839). Published v1.6.0 ZIP and checksum were downloaded and compared
+byte-for-byte with the local build. SHA-256:
+`ed31fcd8a9f602af21ba6808568d7f4e46e8bf7c36ec19a80d7103ed6834b915`.
+The attended Windows PC downloaded the same archive, verified that hash, expanded
+it and loaded the updated browser tool. Its live source inventory completed with
+no issues. Native helper execution awaits approval for a temporary process policy;
+no permanent execution-policy change was made. Live recovery remains unvalidated.

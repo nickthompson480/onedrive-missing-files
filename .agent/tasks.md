@@ -67,5 +67,6 @@ tags: []
 - [x] Add separate missing-file recovery and sample with repeat destination checks.
 - [x] Test real native metadata, source preservation, import and browser controls locally.
 - [x] Obtain user direction to proceed with publishing/download/use.
-- [ ] Run hosted checks and release.
+- [x] Run hosted checks and release.
+- [x] Download, checksum-verify and load v1.6 on the attended Windows PC.
 - [ ] Complete attended Windows helper/import/recovery acceptance.

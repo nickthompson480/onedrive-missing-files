@@ -11,23 +11,20 @@ tags: []
 # Project State
 
 - Goal: Maintain a portable OneDrive Personal inventory and missing-file copier.
-- Current work: v1.6.0 is implemented and packaged locally: read-only native
-  PowerShell comparison, validated import, missing-file recovery elsewhere,
-  three-file recovery sample and repeatable destination checks. Not released.
-  Current Windows diagnosis confirmed junctions in the failing destination.
-- Validation: 56 JavaScript tests pass, including JavaScript ZIP → native
-  restoration/cleanup interoperability. Native tests on the development Mac:
-  18 pass, two Windows-only skips. Synthetic browser acceptance passed automatic
-  directory discovery, preserved originals, ZIP export, cancellation and issue UI.
-- Hosted validation: all four jobs pass at 34e26d5, including Windows native
-  ZIP restoration and timestamps. See validation.md for evidence.
-- Release: https://github.com/nickthompson480/onedrive-missing-files/releases/tag/v1.5.0
-  Published nine-file ZIP downloaded and verified byte-identical to the local
-  build, with matching SHA-256 and valid archive integrity.
-- Next action: run hosted Windows checks, publish v1.6 and download it onto
-  the attended Windows PC for live helper/import/recovery acceptance. The user
-  directed proceeding with download/use in response to the publishing request.
-  Existing v1.5 remains public until the new release completes.
+- Current work: v1.6.0 is released and loaded on the attended Windows PC.
+  It adds read-only native PowerShell comparison, validated import, missing-file
+  recovery elsewhere, a three-file recovery sample and repeat destination checks.
+- Validation: 58 JavaScript tests pass; 18 Python tests pass on the development
+  Mac with two Windows-only skips. Synthetic Chromium recovery acceptance passes.
+  All four hosted jobs passed at 23494f0 (run 36466339839), including the native
+  checker under Windows PowerShell 5.1 and PowerShell 7.
+- Release: https://github.com/nickthompson480/onedrive-missing-files/releases/tag/v1.6.0
+  The published 11-file ZIP matches the local build byte-for-byte. Its SHA-256
+  was also verified after downloading and expanding it on the attended PC.
+- Next action: run the native checker, import its report and test live separate
+  recovery. Temporary process-scoped RemoteSigned approval is pending because
+  that PC uses Restricted execution policy. Its permanent policy is unchanged.
+  The updated browser tool completed the live source inventory without issues.
 - Boundaries: source GET-only; preserve existing local file contents. Metadata
   restoration previews by default and verifies hashes. Native ZIP cleanup is
   limited to explicit input archives after verified restoration. No account data,
