@@ -2,7 +2,7 @@
 type: tasks
 scope: project
 status: active
-last_updated: 2026-09-21
+last_updated: 2026-09-28
 last_reviewed: 2026-09-21
 review_after: 2026-12-20
 tags: []
@@ -58,3 +58,14 @@ tags: []
 - [x] Add native preview, missing-only restore, source dates and verified cleanup.
 - [x] Test archive interoperability, preservation and synthetic browser flows.
 - [x] Pass hosted checks, publish v1.5.0 and verify downloaded release assets.
+
+## Version 1.6 native comparison and missing recovery
+
+- [x] Confirm the reproduced Windows destination failure with native evidence.
+- [x] Add read-only PowerShell metadata comparison with explicit link following.
+- [x] Validate imported file identities and keep unresolved conflicts blocked.
+- [x] Add separate missing-file recovery and sample with repeat destination checks.
+- [x] Test real native metadata, source preservation, import and browser controls locally.
+- [x] Obtain user direction to proceed with publishing/download/use.
+- [ ] Run hosted checks and release.
+- [ ] Complete attended Windows helper/import/recovery acceptance.

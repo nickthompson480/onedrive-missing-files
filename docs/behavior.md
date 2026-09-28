@@ -177,3 +177,19 @@ path, not proof that every Windows provider error is resolved. Live validation
 on the affected Windows folder is still required.
 
 For browser-restricted types, see [one-file ZIP recovery](zip-recovery.md).
+
+## Native comparison and recovery (v1.6)
+
+The optional PowerShell helper reads native metadata for each file in a saved
+disk report. It does not read file contents or change the original tree.
+Following directory links requires an explicit switch. Access errors and unsafe
+paths remain conflicts, not missing files. Reports use exclusive creation.
+
+Import requires exact current inventory identity, path, size, parent and date
+for every file; arbitrary imported URLs and extra fields are ignored. Native
+results enable separate-folder recovery only. Browser-incompatible paths and
+source collisions remain blocked. Each recovery run checks the destination
+again and keeps all existing files. Original/recovery tree overlap is rejected.
+Native aliases cannot be certified by the browser: use an ordinary recovery
+folder without junctions. Equal size is not content verification. See
+[native check workflow](native-check.md).

@@ -2,7 +2,7 @@
 type: validation
 scope: project
 status: active
-last_updated: 2026-09-21
+last_updated: 2026-09-28
 last_reviewed: 2026-09-21
 review_after: 2026-12-20
 tags: [validation]
@@ -144,3 +144,25 @@ six-file count and automatic-lookup guidance; no individual selection control.
 Published v1.5.0 ZIP/checksum downloaded and verified: byte-identical to the final
 local build, SHA-256 matched, nine-file allowlist and ZIP integrity passed.
 No live Windows provider access was available; that acceptance remains pending.
+
+## Version 1.6 local evidence (September 28)
+
+58 JavaScript tests pass, including real PowerShell 7 filesystem checks using
+synthetic symlink targets, missing paths, size mismatches, unsafe paths, exclusive
+report creation and native-output-to-browser import. Source metadata timestamps
+are matched by instant to accommodate PowerShell JSON date normalization. Windows
+CI additionally runs the checker through Windows PowerShell 5.1. Hosted checks
+and live v1.6 acceptance are pending; no push/release has occurred.
+
+20 Python tests ran: 18 pass, two Windows-only skips. Formatting, build, combined
+script syntax, explicit 11-file package allowlist and archive integrity pass.
+
+Actual Chromium UI with synthetic handles/network imported the native report,
+kept direct original-tree downloads disabled, copied three missing sample files,
+then only the remaining two, and separately recovered one size mismatch. The
+original fixture stayed unchanged. Native folder pickers and live OneDrive
+content were not part of this synthetic UI check.
+
+The attended Windows existing-build comparison separately confirmed three
+successful plain-folder downloads and the failed original parent as a native
+junction. Operational/private evidence is owned by the client project.

@@ -41,6 +41,14 @@ A OneDrive item at `/Documents/Report.pdf` is checked at `<selected-folder>/Docu
 
 A matching file size is not proof of matching content. This is an existence-based copier, not a verified backup or two-way sync.
 
+## Windows junctions and separate recovery
+
+If Explorer can open folders that the browser reports missing, use the included
+read-only PowerShell checker. **Import native disk check** updates the file
+comparison, then **Test 3 recovery files**, **Copy missing elsewhere**, and
+**Copy size mismatches elsewhere** recover into separate ordinary folders.
+Existing files and junctions remain unchanged. See [native check instructions](docs/native-check.md).
+
 ## Coverage and limits
 
 **Personal Vault, OneNote/package contents, shortcut targets, shared-with-me content outside My files, recycle bin, and version history are not covered.** The supported account type is OneDrive Personal; work/school accounts are not validated.

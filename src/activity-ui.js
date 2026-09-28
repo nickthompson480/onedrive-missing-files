@@ -61,7 +61,7 @@
       return "Existing contents are preserved. Use Copy size mismatches elsewhere in Files & dates to compare a separate OneDrive copy. Size alone does not identify which copy is correct.";
     if (code === "NotFoundError")
       if (/local_folder/.test(step || ""))
-        return "The browser still could not access this folder after automatic lookup. Explorer may display it even when browser access fails. Files below this unavailable folder are skipped; other folders continue. Save issue details if it repeats. No individual folder selection is required.";
+        return "The browser still could not access this folder after automatic lookup. Explorer may display it even when browser access fails, including Windows junctions. Run the native disk check and import its result before separate-folder recovery. Files below this unavailable folder are skipped; other folders continue. Save issue details if it repeats. No individual folder selection is required.";
     if (code === "NotFoundError")
       return /local|destination|open_write_stream/.test(step || "")
         ? "A local file or folder could not be found at this step. This is not a OneDrive HTTP 404. Keep the destination idle, select it again and check disk. If it repeats, save issue details; try a separate short folder path to test whether the original destination is involved."

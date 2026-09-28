@@ -2,8 +2,8 @@
 type: context-gap-index
 scope: project
 status: active
-last_updated: 2026-09-21
-last_reviewed: 2026-09-21
+last_updated: 2026-09-28
+last_reviewed: 2026-09-28
 review_after: 2026-12-20
 tags: [context, discovery]
 ---
@@ -14,9 +14,17 @@ tags: [context, discovery]
 - Personal Vault, package internals, shortcut targets, and other excluded namespaces are not covered.
 - Website API stability and cross-application file-creation races cannot be guaranteed.
 
-- 2026-09-21: User confirmed the Windows destination is inside OneDrive; the
-  visible sync arrows indicate syncing/pending status. Explorer visibility does
-  not establish ordinary browser filesystem access or hydration. Retry v1.5 automatic lookup on the
-  affected destination before further diagnosis. A location comparison may help
-  distinguish sync/provider involvement, but no root cause is yet established. No Windows machine access is available
-  in this task; this finding comes from user reports and screenshots.
+- 2026-09-28 attended Windows Chrome: the reproduced create_local_folder
+  NotFoundError parent is a Windows Junction targeting another local folder.
+  Three small files succeeded in a new plain Downloads directory. Native
+  metadata inspection found many browser-missing files present through the
+  junctions. This resolves the cause of the reproduced parent failure, not all
+  possible filesystem errors. No junction or original content was changed.
+- v1.6 uses a read-only PowerShell check and validated import to recover missing
+  or differing files into a separate ordinary folder. Local PowerShell 7 and
+  browser UI checks passed; Windows PowerShell 5.1 and live v1.6 acceptance
+  remain pending. The remote PC has no `py` launcher. Browser overlap checks
+  cannot certify absence of native aliases; recovery must use an ordinary
+  folder without junctions. Equal-size metadata does not verify contents.
+- Private endpoint paths/reports, operational counts and attended-session
+  handoff belong to client--unity-church-digital-operations, not public fixtures.

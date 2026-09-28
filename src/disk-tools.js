@@ -246,7 +246,92 @@
       scope: "small_file_test",
     };
   }
-  async function recoveryPlan({ plan, report, originalRoot, root, signal }) {
+  function applyNativeAudit({ audit, report, plan }) {
+    validateInventory(report);
+    if (plan?.status !== "checked" || plan.inventoryStarted !== report.started)
+      throw fail("check_disk_first");
+    const files = report.items.filter((x) => x.type === "file");
+    if (
+      audit?.kind !== "onedrive_native_disk_check" ||
+      audit.version !== 1 ||
+      audit.status !== "finished" ||
+      audit.folder !== plan.folder ||
+      typeof audit.checked !== "string" ||
+      !Number.isFinite(Date.parse(audit.checked)) ||
+      !Array.isArray(audit.items) ||
+      audit.items.length !== files.length
+    )
+      throw fail("native_check_does_not_match");
+    const current = new Map(files.map((x) => [x.id, x]));
+    const checked = new Map();
+    for (const row of audit.items) {
+      const source = current.get(row.id);
+      if (
+        !source ||
+        checked.has(row.id) ||
+        ["path", "type", "size", "name", "parentId"].some(
+          (k) => row[k] !== source[k],
+        ) ||
+        !Number.isFinite(Date.parse(row.modified)) ||
+        Date.parse(row.modified) !== Date.parse(source.modified) ||
+        !["present", "missing", "existing_size_mismatch", "conflict"].includes(
+          row.status,
+        )
+      )
+        throw fail("native_check_does_not_match");
+      if (
+        ["present", "existing_size_mismatch"].includes(row.status) &&
+        (!Number.isSafeInteger(row.localSize) ||
+          row.localSize < 0 ||
+          (row.localSize === source.size) !== (row.status === "present"))
+      )
+        throw fail("invalid_native_size");
+      checked.set(row.id, row);
+    }
+    const items = plan.items.map((old) => {
+      const row = checked.get(old.id);
+      if (!row) return old;
+      // Native metadata cannot resolve source name collisions or unsafe paths.
+      if (
+        old.status === "conflict" &&
+        old.reason !== "browser_restricted_file_type"
+      )
+        return old;
+      if (
+        old.reason === "browser_restricted_file_type" &&
+        row.status === "missing"
+      )
+        return old;
+      const { reason, localSize, operation, localPath, ...base } = old;
+      const result = { ...base, status: row.status };
+      if (["present", "existing_size_mismatch"].includes(row.status))
+        result.localSize = row.localSize;
+      if (row.status === "existing_size_mismatch" && row.localSize === 0)
+        result.reason = "empty_local_file";
+      if (row.status === "conflict") result.reason = "native_access_error";
+      return result;
+    });
+    const counts = {};
+    for (const row of items) counts[row.status] = (counts[row.status] || 0) + 1;
+    return {
+      ...plan,
+      items,
+      counts,
+      scope: "native_disk_check",
+      nativeChecked: audit.checked,
+      missingBytes: items
+        .filter((x) => x.type === "file" && x.status === "missing")
+        .reduce((n, x) => n + x.size, 0),
+    };
+  }
+  async function recoveryPlan({
+    plan,
+    report,
+    originalRoot,
+    root,
+    signal,
+    status = "existing_size_mismatch",
+  }) {
     validateInventory(report);
     if (plan?.status !== "checked" || plan.inventoryStarted !== report.started)
       throw fail("check_disk_first");
@@ -257,12 +342,12 @@
       throw fail("choose_separate_recovery_folder");
     const selected = new Set(
       plan.items
-        .filter(
-          (x) => x.status === "existing_size_mismatch" && x.type === "file",
-        )
+        .filter((x) => x.status === status && x.type === "file")
         .map((x) => x.id),
     );
-    if (!selected.size) throw fail("no_size_mismatches");
+    if (!["missing", "existing_size_mismatch"].includes(status))
+      throw fail("invalid_recovery_scope");
+    if (!selected.size) throw fail("no_recovery_files");
     return checkDisk({
       report: {
         ...report,
@@ -645,6 +730,7 @@
     validateInventory,
     samplePlan,
     recoveryPlan,
+    applyNativeAudit,
     fetchDownload,
   };
   if (typeof module !== "undefined" && module.exports) {
@@ -681,10 +767,22 @@
     test = el("button", "Test 3 small files"),
     cancel = el("button", "Stop downloads"),
     save = el("button", "Save disk report"),
-    recover = el("button", "Copy size mismatches elsewhere");
+    recover = el("button", "Copy size mismatches elsewhere"),
+    importNative = el("button", "Import native disk check"),
+    recoverMissing = el("button", "Copy missing elsewhere"),
+    testRecovery = el("button", "Test 3 recovery files");
+  const nativeFile = document.createElement("input");
+  nativeFile.type = "file";
+  nativeFile.accept = ".json,application/json";
+  nativeFile.hidden = true;
+  block.append(nativeFile);
   el(
     "p",
     "For empty or differing local files, copy the OneDrive versions to a separate folder for review. Originals stay unchanged.",
+  );
+  el(
+    "p",
+    "If Explorer sees folders that the browser cannot open, save the disk report and run check-disk.ps1. Import its result here, then copy missing files or size mismatches to a separate ordinary folder. Native checks compare sizes only; linked folders are not independent backup copies.",
   );
   check.disabled =
     download.disabled =
@@ -692,6 +790,9 @@
     cancel.disabled =
     save.disabled =
     recover.disabled =
+    importNative.disabled =
+    recoverMissing.disabled =
+    testRecovery.disabled =
       true;
   const concurrencyLabel = el("label", "Parallel downloads ");
   const parallel = document.createElement("select");
@@ -712,17 +813,32 @@
   const closeButton = [...section.querySelectorAll("button")].find(
     (x) => x.textContent === "Close",
   );
-  const controls = [choose, check, download, test, parallel, recover];
+  const controls = [
+    choose,
+    check,
+    download,
+    test,
+    parallel,
+    recover,
+    importNative,
+    recoverMissing,
+    testRecovery,
+  ];
   const busy = (value) => {
     window.__oneDriveDiskBusy = value;
     controls.forEach((x) => (x.disabled = value));
     scanButton.disabled = value;
     closeButton.disabled = value;
     cancel.disabled = !value;
-    if (!value)
+    if (!value) {
+      importNative.disabled = !plan;
+      recoverMissing.disabled = testRecovery.disabled = !plan?.items.some(
+        (x) => x.type === "file" && x.status === "missing",
+      );
       recover.disabled = !plan?.items.some(
         (x) => x.status === "existing_size_mismatch",
       );
+    }
   };
   const endpoint = () => {
     const found = performance
@@ -747,7 +863,13 @@
       window.__oneDriveDownloadResult = null;
       window.__oneDriveRecoveryPlan = null;
       window.__oneDriveActivity?.({ clearIssues: true });
-      download.disabled = test.disabled = recover.disabled = true;
+      download.disabled =
+        test.disabled =
+        recover.disabled =
+        importNative.disabled =
+        recoverMissing.disabled =
+        testRecovery.disabled =
+          true;
       check.disabled = false;
       status.textContent = "Selected: " + root.name + ". Click Check disk.";
     } catch (e) {
@@ -802,6 +924,53 @@
       download.disabled = test.disabled = !plan;
     }
   };
+  importNative.onclick = () => {
+    nativeFile.value = "";
+    nativeFile.click();
+  };
+  nativeFile.onchange = async () => {
+    const file = nativeFile.files?.[0];
+    if (!file) return;
+    if (
+      window.__oneDriveDiskBusy ||
+      window.__oneDriveInventoryScanning ||
+      window.__oneDriveMetadataBusy ||
+      window.__oneDriveArchiveBusy
+    )
+      return;
+    busy(true);
+    try {
+      if (file.size > 64 * 1024 ** 2) throw fail("native_report_too_large");
+      plan = applyNativeAudit({
+        audit: JSON.parse((await file.text()).replace(/^\uFEFF/, "")),
+        report: window.__oneDriveInventoryReport,
+        plan,
+      });
+      inventory = window.__oneDriveInventoryReport;
+      window.__oneDriveDiskPlan = plan;
+      result = null;
+      window.__oneDriveDownloadResult = null;
+      window.__oneDriveRecoveryPlan = null;
+      window.__oneDriveActivity?.({ clearIssues: true });
+      const count = (kind) =>
+        plan.items.filter((x) => x.type === "file" && x.status === kind).length;
+      status.textContent =
+        "Native check: " +
+        count("missing") +
+        " missing files; " +
+        count("existing_size_mismatch") +
+        " size mismatches; " +
+        count("conflict") +
+        " unresolved. Use separate-folder recovery. Equal size does not verify contents.";
+      detail.textContent = JSON.stringify(plan.counts, null, 2);
+      save.disabled = false;
+    } catch (e) {
+      status.textContent = "Native check import stopped: " + (e.code || e.name);
+    } finally {
+      busy(false);
+      download.disabled = test.disabled = true;
+    }
+  };
   const startDownload = async (sample = false, recovery = false) => {
     if (
       window.__oneDriveInventoryScanning ||
@@ -832,8 +1001,10 @@
           originalRoot: root,
           root: targetRoot,
           signal: controller.signal,
+          status: recovery === "missing" ? "missing" : "existing_size_mismatch",
         });
         window.__oneDriveRecoveryPlan = selectedPlan;
+        if (sample) selectedPlan = samplePlan(selectedPlan);
       }
       const base = endpoint();
       window.__oneDriveDownloadResult = null;
@@ -864,7 +1035,11 @@
           }),
       });
       result.scope = recovery
-        ? "separate_recovery_folder"
+        ? sample
+          ? "recovery_small_file_test"
+          : recovery === "missing"
+            ? "missing_recovery_folder"
+            : "separate_recovery_folder"
         : sample
           ? "small_file_test"
           : "all_missing";
@@ -915,6 +1090,8 @@
   download.onclick = () => startDownload(false);
   test.onclick = () => startDownload(true);
   recover.onclick = () => startDownload(false, true);
+  recoverMissing.onclick = () => startDownload(false, "missing");
+  testRecovery.onclick = () => startDownload(true, "missing");
   cancel.onclick = () => controller?.abort();
   save.onclick = () => {
     const url = URL.createObjectURL(

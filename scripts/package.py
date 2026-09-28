@@ -15,6 +15,8 @@ FILES = (
     "docs/behavior.md",
     "repair-dates.py",
     "docs/date-repair.md",
+    "check-disk.ps1",
+    "docs/native-check.md",
     "restore-zip.py",
     "docs/zip-recovery.md",
 )

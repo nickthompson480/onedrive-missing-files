@@ -964,3 +964,79 @@ test("parallel files whose existing parent disappears share one folder issue", a
   assert.equal(result.blockedFiles, 6);
   assert.equal(events.filter((x) => x.stage === "Issue").length, 1);
 });
+
+test("native audit validates every source identity and preserves unresolved conflicts", async () => {
+  const { applyNativeAudit, recoveryPlan } = require("../src/disk-tools.js");
+  const root = new Directory();
+  const inventory = report([
+    row("1", "/linked/a"),
+    row("2", "/linked/b"),
+    row("3", "/linked/c"),
+    row("4", "/bad:name"),
+  ]);
+  const plan = await checkDisk({ root, report: inventory });
+  const audit = {
+    kind: "onedrive_native_disk_check",
+    version: 1,
+    status: "finished",
+    folder: root.name,
+    checked: new Date().toISOString(),
+    items: inventory.items.map((x, i) => ({
+      ...x,
+      status: ["present", "existing_size_mismatch", "missing", "conflict"][i],
+      ...(i < 2 ? { localSize: i === 0 ? 3 : 0 } : {}),
+    })),
+  };
+  const checked = applyNativeAudit({ audit, report: inventory, plan });
+  assert.deepEqual(
+    checked.items.map((x) => x.status),
+    ["present", "existing_size_mismatch", "missing", "conflict"],
+  );
+  assert.equal(checked.items[1].reason, "empty_local_file");
+  assert.equal(checked.missingBytes, 3);
+  for (const mutate of [
+    (a) => a.items.pop(),
+    (a) => (a.items[1] = a.items[0]),
+    (a) => (a.folder = "wrong"),
+    (a) => (a.items[0].modified = "changed"),
+    (a) => (a.items[0].path = "/elsewhere"),
+    (a) => (a.items[0].size = 4),
+    (a) => (a.items[0].localSize = -1),
+    (a) => (a.items[0].localSize = 4),
+    (a) => (a.items[0].status = "unchecked"),
+    (a) => (a.items[0].parentId = "different"),
+  ]) {
+    const bad = structuredClone(audit);
+    mutate(bad);
+    assert.throws(() =>
+      applyNativeAudit({ audit: bad, report: inventory, plan }),
+    );
+  }
+  const recovery = new Directory("recovery");
+  root.resolve = recovery.resolve = async () => null;
+  const selected = await recoveryPlan({
+    plan: checked,
+    report: inventory,
+    originalRoot: root,
+    root: recovery,
+    status: "missing",
+  });
+  assert.deepEqual(
+    selected.items.map((x) => x.id),
+    ["3"],
+  );
+  await populate({
+    plan: selected,
+    root: recovery,
+    fetchFile: async () => response("new"),
+  });
+  const again = await recoveryPlan({
+    plan: checked,
+    report: inventory,
+    originalRoot: root,
+    root: recovery,
+    status: "missing",
+  });
+  assert.equal(again.counts.present, 1);
+  assert.equal(root.creates, 0);
+});

@@ -46,6 +46,8 @@ fs.copyFileSync(
 );
 
 for (const [from, to] of [
+  ["native/check-disk.ps1", "check-disk.ps1"],
+  ["docs/native-check.md", "docs/native-check.md"],
   ["native/restore-zip.py", "restore-zip.py"],
   ["docs/zip-recovery.md", "docs/zip-recovery.md"],
 ]) {
