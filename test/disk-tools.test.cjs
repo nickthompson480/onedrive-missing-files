@@ -1042,3 +1042,70 @@ test("native audit validates every source identity and preserves unresolved conf
   assert.equal(again.counts.present, 1);
   assert.equal(root.creates, 0);
 });
+
+test("resumed network stream commits once and preserves existing files", async () => {
+  const { fetchDownload } = require("../src/disk-tools.js");
+  const root = new Directory();
+  const preserved = new File("old", "original");
+  root.entries.set("old", preserved);
+  const source = row("new", "/new", "file", 8);
+  const plan = await checkDisk({
+    root,
+    report: report([source, row("old", "/old", "file", 8)]),
+  });
+  let contentCalls = 0;
+  const result = await populate({
+    plan,
+    root,
+    fetchFile: (item, signal) =>
+      fetchDownload({
+        row: item,
+        signal,
+        base: "https://onedrive.live.com/api",
+        origin: "https://onedrive.live.com",
+        retryBaseMs: 0,
+        request: async (url, init) => {
+          if (url.includes("/items/"))
+            return {
+              ok: true,
+              json: async () => ({
+                ...source,
+                cTag: "unchanged",
+                lastModifiedDateTime: source.modified,
+                parentReference: { id: source.parentId },
+                "@content.downloadUrl": "https://test.files.1drv.com/new",
+              }),
+            };
+          if (contentCalls++ === 0) {
+            let sent = false;
+            return {
+              ok: true,
+              body: new ReadableStream(
+                {
+                  pull(c) {
+                    if (!sent) {
+                      sent = true;
+                      c.enqueue(Uint8Array.from([1, 2, 3]));
+                    } else c.error(new TypeError("interrupted"));
+                  },
+                },
+                { highWaterMark: 0 },
+              ),
+            };
+          }
+          assert.equal(init.headers.Range, "bytes=3-");
+          return new Response(Uint8Array.from([4, 5, 6, 7, 8]), {
+            status: 206,
+            headers: { "Content-Range": "bytes 3-7/8" },
+          });
+        },
+      }),
+  });
+  assert.equal(result.downloaded, 1);
+  assert.equal(result.bytes, 8);
+  assert.deepEqual(result.issues, []);
+  assert.equal(root.entries.get("new").writes, 1);
+  assert.deepEqual([...root.entries.get("new").data], [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.equal(preserved.writes, 0);
+  assert.equal(Buffer.from(preserved.data).toString(), "original");
+});

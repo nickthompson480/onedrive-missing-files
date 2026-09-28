@@ -76,4 +76,15 @@ tags: []
 
 - [x] Default to one download, use idle timeout and expose a larger bounded run.
 - [x] Verify local streaming regression tests and synthetic Chromium controls.
-- [ ] Pass hosted checks, publish and verify release; resume attended recovery.
+- [x] Pass hosted checks, publish and verify release; resume attended recovery.
+- [x] Verify live large-file completion.
+- [ ] Reconcile full recovery.
+
+## Version 1.6.2 network recovery
+
+- [x] Add bounded transient retries, server backoff and verified byte-range resume.
+- [x] Test network drops, stalls, truncation, changed versions, invalid ranges,
+  cancellation, exact committed bytes and existing-file preservation.
+- [x] Exercise three interrupted/resumed files through Chromium recovery UI.
+- [ ] Pass hosted checks, publish and checksum-verify on Windows.
+- [ ] Validate live range headers/CORS when the new build is used.

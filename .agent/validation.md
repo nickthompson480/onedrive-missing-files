@@ -190,4 +190,26 @@ consumer cancellation, and source identity preservation. 18 Python tests pass
 with two Windows-only skips. Format, build, syntax and whitespace checks pass.
 Synthetic Chromium native import and three-file separate recovery passed with
 concurrency one and Large recovery selected; existing source contents preserved.
-Hosted checks and live updated-build large-transfer acceptance are pending.
+All four hosted jobs passed at e34505759dcc5c145da3b26a8c8486e796bcdf10
+(run 36469642749), including native Windows PowerShell 5.1. The published
+11-file ZIP (84,864 bytes) and checksum were downloaded and matched the local
+reviewed build byte-for-byte. SHA-256:
+`768d0ab2388ff32008e90d0b8a3ed2b52e8b5815f8c676de45380d25dd8ef561`.
+The attended Windows download verified the same hash, expanded and loaded the
+new build. Fresh source inventory and native import passed; recovery resumed
+with one active transfer and Large recovery selected. Live large-file completion
+and full recovery remained pending at that point. The first large video then
+completed successfully in the attended Windows run; the next file started with
+no new issues.
+
+
+## Version 1.6.2 local evidence (September 28)
+
+78 JavaScript tests pass. New tests reproduce mid-stream network drops, idle
+timeout, clean truncation, 429 Retry-After, bounded 503 retries, permanent errors,
+backoff cancellation, missing/changed versions and missing/wrong/ignored ranges.
+The populate integration commits exact resumed bytes once and preserves an
+existing file. Actual Chromium with synthetic network and handles resumed three
+files from byte one, completed all three with zero issues and preserved the
+original fixture. This does not establish live OneDrive CORS/range acceptance.
+Format/build/package checks pass; hosted checks are pending.

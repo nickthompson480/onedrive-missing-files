@@ -72,6 +72,13 @@
       return "OneDrive is throttling requests or temporarily unavailable. Wait, then check disk and retry with fewer parallel downloads.";
     if (/http_404$/.test(code))
       return "OneDrive returned HTTP 404. Scan again because the remote item or download link may have changed.";
+    if (
+      code === "resume_range_unverified" ||
+      code === "resume_version_unavailable"
+    )
+      return "The interrupted transfer could not be resumed safely: a stable source version or a verifiable byte range was unavailable. Keep the issue report and recover a fresh copy in a separate folder. Existing files are preserved.";
+    if (code === "retry_wait_exceeds_budget")
+      return "OneDrive requested a wait longer than the five-minute retry allowance. This file stopped rather than retrying too early. Wait before starting another recovery run.";
     if (code === "TimeoutError")
       return "The file request made no progress for five minutes. Check disk for an empty placeholder, then retry with one download at a time or use OneDrive's own download controls.";
     if (code === "NoModificationAllowedError")

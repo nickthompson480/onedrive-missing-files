@@ -61,6 +61,22 @@ is not considered present. Matching sizes do not prove identical contents.
 - Remote name, parent, size and modification time are rechecked before download.
   Only first-party HTTPS download hosts are accepted. Temporary download links
   stay in memory and are not exported; file data is streamed to disk.
+- File transfers retry temporary network errors, inactivity timeouts, truncation,
+  HTTP 408/429/500/502/503/504, and expired download-link 403 responses up to four
+  times per file. Waits start at two seconds and double; a visible Retry-After
+  header takes precedence. A requested wait over five minutes stops that file.
+  Every attempt refreshes metadata and the temporary download URL. One worker
+  stays occupied while waiting, so concurrency one never starts a second file.
+- During the same open-page transfer, retries request bytes after the last
+  delivered chunk. Resume requires an unchanged cTag/eTag, HTTP 206 and an exact
+  readable Content-Range; missing/CORS-hidden or incorrect range evidence stops
+  the file. Metadata is checked again after a resumed transfer before committing.
+  A full HTTP 200 response is never appended to partial bytes. This implements
+  Microsoft's [partial download contract](https://learn.microsoft.com/en-us/graph/api/driveitem-get-content?view=graph-rest-1.0#partial-range-downloads).
+  Browser reload, Stop, exhausted retries, local write errors and permission
+  failures do not have persistent partial-file resume. The browser write remains
+  uncommitted until the full stream succeeds; an empty placeholder can remain
+  after failure and must be reviewed or recovered separately.
 - Downloaded byte counts and resulting file sizes are checked. This is not a
   cryptographic content check or a complete verified backup.
 - Keep the target folder idle. Existing paths are rechecked before creation;

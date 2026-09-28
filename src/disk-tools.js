@@ -506,6 +506,7 @@
         step = "request_file";
         response = await fetchFile(row, runSignal, (value) => {
           step = value;
+          if (value === "retry_wait") update("Waiting to retry");
         });
         if (!response?.body) throw fail("missing_download_stream");
         // Recheck after the network request; never intentionally replace an existing file.
@@ -659,7 +660,7 @@
     result.status = result.issues.length ? "partial" : "finished";
     return result;
   }
-  async function fetchDownload({
+  async function fetchDownloadAttempt({
     row,
     base,
     origin,
@@ -667,6 +668,9 @@
     setStep = () => {},
     request = fetch,
     idleMs = 5 * 60 * 1000,
+    offset = 0,
+    version = null,
+    verifyOnly = false,
   }) {
     if (!Number.isSafeInteger(idleMs) || idleMs < 1)
       throw fail("invalid_budget");
@@ -685,6 +689,18 @@
         idleMs,
       );
     };
+    const httpError = (prefix, response) => {
+      const error = fail(prefix + response.status);
+      const retry = response.headers?.get("Retry-After");
+      if (retry !== null && retry !== undefined) {
+        const delay = /^\d+$/.test(retry)
+          ? Number(retry) * 1000
+          : Date.parse(retry) - Date.now();
+        if (Number.isFinite(delay)) error.retryAfterMs = Math.max(0, delay);
+      }
+      response.body?.cancel().catch(() => {});
+      return error;
+    };
     arm();
     try {
       setStep("request_metadata");
@@ -698,7 +714,7 @@
           headers: { Accept: "application/json" },
         },
       );
-      if (!response.ok) throw fail("metadata_http_" + response.status);
+      if (!response.ok) throw httpError("metadata_http_", response);
       setStep("read_metadata");
       const meta = await response.json();
       arm();
@@ -710,6 +726,19 @@
         meta.parentReference?.id !== row.parentId
       )
         throw fail("remote_changed_rescan");
+      const currentVersion =
+        typeof meta.cTag === "string" && meta.cTag
+          ? "cTag:" + meta.cTag
+          : typeof meta.eTag === "string" && meta.eTag
+            ? "eTag:" + meta.eTag
+            : null;
+      if (version && currentVersion !== version)
+        throw fail("remote_changed_rescan");
+      if (offset && !version) throw fail("resume_version_unavailable");
+      if (verifyOnly) {
+        clearTimeout(timer);
+        return { metadata: sourceMetadata(meta), version: currentVersion };
+      }
       const link =
         meta["@microsoft.graph.downloadUrl"] || meta["@content.downloadUrl"];
       if (typeof link !== "string") throw fail("download_url_missing");
@@ -731,9 +760,23 @@
         method: "GET",
         credentials: "omit",
         referrerPolicy: "no-referrer",
+        ...(offset ? { headers: { Range: "bytes=" + offset + "-" } } : {}),
         signal: timeout,
       });
-      if (!content.ok) throw fail("download_http_" + content.status);
+      if (!content.ok) throw httpError("download_http_", content);
+      if (offset) {
+        const range = content.headers?.get("Content-Range");
+        if (
+          content.status !== 206 ||
+          range !== `bytes ${offset}-${row.size - 1}/${row.size}`
+        ) {
+          await content.body?.cancel().catch(() => {});
+          throw fail("resume_range_unverified");
+        }
+      } else if (content.status === 206) {
+        await content.body?.cancel().catch(() => {});
+        throw fail("unexpected_partial_download");
+      }
       const metadata = sourceMetadata(meta);
       if (!content.body) throw fail("download_body_missing");
       const reader = content.body.getReader();
@@ -777,11 +820,159 @@
           return reader.cancel(reason);
         },
       });
-      return { body, metadata };
+      return { body, metadata, version: currentVersion };
     } catch (error) {
       clearTimeout(timer);
       throw error;
     }
+  }
+  // Keep one writable stream open across bounded network retries. Nothing is
+  // committed until populate has received and verified the complete stream.
+  async function fetchDownload(options) {
+    const {
+      maxRetries = 4,
+      retryBaseMs = 2000,
+      retryMaxMs = 5 * 60 * 1000,
+    } = options;
+    if (
+      !Number.isInteger(maxRetries) ||
+      maxRetries < 0 ||
+      maxRetries > 10 ||
+      !Number.isSafeInteger(retryBaseMs) ||
+      retryBaseMs < 0 ||
+      !Number.isSafeInteger(retryMaxMs) ||
+      retryMaxMs < 0
+    )
+      throw fail("invalid_retry_budget");
+    const cancelled = new AbortController();
+    const signal = AbortSignal.any(
+      [options.signal, cancelled.signal].filter(Boolean),
+    );
+    let retries = 0,
+      offset = 0,
+      version = null,
+      reader,
+      initial;
+    const check = () => {
+      if (signal.aborted) throw signal.reason;
+    };
+    const wait = (ms) =>
+      new Promise((resolve, reject) => {
+        check();
+        const abort = () => {
+          clearTimeout(timer);
+          reject(signal.reason);
+        };
+        const timer = setTimeout(() => {
+          signal.removeEventListener("abort", abort);
+          resolve();
+        }, ms);
+        signal.addEventListener("abort", abort, { once: true });
+      });
+    const retry = async (error) => {
+      check();
+      const transient =
+        ["TypeError", "TimeoutError"].includes(error.name) ||
+        /^(metadata|download)_http_(408|429|500|502|503|504)$/.test(
+          error.code || "",
+        ) ||
+        error.code === "download_http_403" ||
+        error.code === "download_truncated";
+      if (
+        !transient ||
+        retries >= maxRetries ||
+        (offset > 0 && offset >= options.row.size)
+      )
+        throw error;
+      if (offset && !version) throw fail("resume_version_unavailable");
+      const delay = Math.max(
+        retryBaseMs * 2 ** retries,
+        error.retryAfterMs || 0,
+      );
+      if (delay > retryMaxMs) throw fail("retry_wait_exceeds_budget");
+      retries++;
+      options.setStep?.("retry_wait");
+      await wait(delay);
+    };
+    const open = async () => {
+      while (true) {
+        check();
+        try {
+          const response = await fetchDownloadAttempt({
+            ...options,
+            signal,
+            offset,
+            version,
+          });
+          if (!initial) {
+            initial = response;
+            version = response.version;
+          }
+          reader = response.body.getReader();
+          return;
+        } catch (error) {
+          await retry(error);
+        }
+      }
+    };
+    const release = async () => {
+      const activeReader = reader;
+      reader = null;
+      if (activeReader) {
+        await activeReader.cancel().catch(() => {});
+        activeReader.releaseLock();
+      }
+    };
+    await open();
+    let settled = false;
+    const body = new ReadableStream({
+      async pull(controller) {
+        while (!settled) {
+          try {
+            check();
+            if (!reader) await open();
+            const { done, value } = await reader.read();
+            check();
+            if (done) {
+              if (offset !== options.row.size) throw fail("download_truncated");
+              if (retries && version)
+                await fetchDownloadAttempt({
+                  ...options,
+                  signal,
+                  version,
+                  verifyOnly: true,
+                });
+              settled = true;
+              await release();
+              controller.close();
+              return;
+            }
+            if (offset + value.byteLength > options.row.size)
+              throw fail("download_size_mismatch");
+            offset += value.byteLength;
+            controller.enqueue(value);
+            return;
+          } catch (error) {
+            await release();
+            if (settled) return;
+            try {
+              await retry(error);
+            } catch (finalError) {
+              settled = true;
+              cancelled.abort(finalError);
+              controller.error(finalError);
+              return;
+            }
+          }
+        }
+      },
+      async cancel(reason) {
+        settled = true;
+        cancelled.abort(reason);
+        await release();
+      },
+    });
+    return { body, metadata: initial.metadata };
   }
   const api = {
     parts,

@@ -23,8 +23,11 @@ tags: [context, discovery]
 - v1.6 uses a read-only PowerShell check and validated import to recover missing
   or differing files into a separate ordinary folder. Local PowerShell 7 and
   browser UI checks and hosted Windows PowerShell 5.1 checks passed. The v1.6 release
-  passed live helper/import/three-file recovery acceptance. Full recovery and
-  large-file acceptance of the v1.6.1 timeout change remain pending.
+  passed live helper/import/three-file recovery acceptance. Live v1.6.1
+  large-file acceptance also passed; full recovery remains pending.
+  v1.6.2 same-session resume passes synthetic tests but requires live readable
+  Content-Range and an unchanged version tag. It deliberately fails closed if
+  browser CORS hides range evidence; reload/Stop has no persistent checkpoint.
   The remote PC has no `py` launcher. Browser overlap checks
   cannot certify absence of native aliases; recovery must use an ordinary
   folder without junctions. Equal-size metadata does not verify contents.
