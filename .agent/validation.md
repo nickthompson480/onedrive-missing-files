@@ -212,4 +212,10 @@ The populate integration commits exact resumed bytes once and preserves an
 existing file. Actual Chromium with synthetic network and handles resumed three
 files from byte one, completed all three with zero issues and preserved the
 original fixture. This does not establish live OneDrive CORS/range acceptance.
-Format/build/package checks pass; hosted checks are pending.
+Format/build/package checks pass. All four hosted jobs passed at
+8b4b7bba58a7841e8e55c17aea49ff9426ac694e (run 36471846137). The published
+11-file ZIP (88,626 bytes) and checksum match the reviewed local build exactly.
+SHA-256: `7edcc1d65698cb18902c61d9276b7e05d1e1664cd2c7196388910ebdd5354f1c`.
+The attended Windows PC downloaded, hash-verified and expanded that archive.
+It is ready for the next run; the healthy v1.6.1 batch was left running. No live
+network fault was deliberately induced and live range/CORS acceptance is pending.

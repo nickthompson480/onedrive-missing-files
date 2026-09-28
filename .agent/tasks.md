@@ -86,5 +86,5 @@ tags: []
 - [x] Test network drops, stalls, truncation, changed versions, invalid ranges,
   cancellation, exact committed bytes and existing-file preservation.
 - [x] Exercise three interrupted/resumed files through Chromium recovery UI.
-- [ ] Pass hosted checks, publish and checksum-verify on Windows.
+- [x] Pass hosted checks, publish and checksum-verify on Windows.
 - [ ] Validate live range headers/CORS when the new build is used.
