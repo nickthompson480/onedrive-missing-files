@@ -115,7 +115,7 @@ for full download results; refreshing the page clears this session's activity.
 ## Parallel downloads
 
 Choose **Parallel downloads** under Files & dates before starting: **1–5**, with
-**3** selected by default. Each active file has its own progress card. The
+**1** selected by default. Each active file has its own progress card. The
 setting is locked during a run. Larger settings may help when OneDrive or your
 connection can handle more simultaneous requests; use 1 for a sequential copy.
 
@@ -145,3 +145,16 @@ See [ZIP recovery instructions](docs/zip-recovery.md).
 Folder discovery now checks existing directory listings automatically when a
 name lookup fails. There is no per-folder connection step. Failed parent folders
 are reported once with the dependent file count, while other branches continue.
+
+### Multiple streams within a large file (v1.7)
+
+Choose **Large-file streams**: 1 (default), 2, or 3. Files at least 256 MiB
+can use separate byte ranges in parallel; smaller files retain one stream.
+Selecting this mode keeps the file queue at one file at a time. Each range
+retries and resumes independently after a transient interruption. The browser
+must expose exact range headers and a stable source version. Unsupported
+ranges or 429/503 throttling fall back to a single stream for that file.
+
+The tool commits a file only after every range has finished and its size is
+verified. Stop still cancels the active file; there is no resume checkpoint
+across page reloads. Keep the tab open.

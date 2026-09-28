@@ -212,3 +212,19 @@ again and keeps all existing files. Original/recovery tree overlap is rejected.
 Native aliases cannot be certified by the browser: use an ordinary recovery
 folder without junctions. Equal size is not content verification. See
 [native check workflow](native-check.md).
+
+## Large-file streams (v1.7)
+
+The 1/2/3 stream selector applies to files at least 256 MiB. Two or three streams
+force file concurrency to one. Each stream requests a distinct contiguous range,
+validates exact HTTP 206 Content-Range and source version, and streams directly
+to its offset through serialized writes. Memory is bounded by stream buffers.
+Every part uses bounded retry/resume and rechecks source metadata at completion.
+
+Unsupported ranges or HTTP 429/503 cancel peer requests and restart this file
+with one stream after the bounded Retry-After delay. Only the current
+uncommitted write is truncated. Existing files are never replaced. Source
+changes, disk failures and Stop abort the transfer without this fallback.
+Partial writes are committed only after all parts finish and the byte count
+matches; the saved file size is checked again. No persistent resume or content
+hash verification is implied.

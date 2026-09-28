@@ -219,3 +219,12 @@ SHA-256: `7edcc1d65698cb18902c61d9276b7e05d1e1664cd2c7196388910ebdd5354f1c`.
 The attended Windows PC downloaded, hash-verified and expanded that archive.
 It is ready for the next run; the healthy v1.6.1 batch was left running. No live
 network fault was deliberately induced and live range/CORS acceptance is pending.
+
+## Version 1.7.0 local evidence (September 28)
+
+Segmented transfer tests cover two/three concurrent ranges, exact assembly,
+small-file single streaming, ignored ranges, throttling fallback, Stop, disk
+failure, destination races, final commit and bounded segment resume. Chromium
+accepted a synthetic 256 MiB two-stream transfer with one file active, exact
+byte count, zero issues and the existing fixture preserved. Live OneDrive
+range/CORS behavior and deployment remain pending.

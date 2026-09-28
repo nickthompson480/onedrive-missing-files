@@ -507,11 +507,14 @@
         response = await fetchFile(row, runSignal, (value) => {
           step = value;
           if (value === "retry_wait") update("Waiting to retry");
+          if (value === "single_stream_fallback")
+            update("Restarting with one stream");
         });
-        if (!response?.body) throw fail("missing_download_stream");
+        if (!response?.body && !response?.transferTo)
+          throw fail("missing_download_stream");
         // Recheck after the network request; never intentionally replace an existing file.
         if ((await fs.inspect(segments, "file", true)).status !== "missing") {
-          await response.body.cancel();
+          await cancelDownload(response);
           result.skipped++;
           update("Skipped", true, "existing_file_preserved");
           return;
@@ -527,7 +530,7 @@
           (await operation("read_local_file", row.path, () => handle.getFile()))
             .size !== 0
         ) {
-          await response.body.cancel();
+          await cancelDownload(response);
           result.skipped++;
           update("Skipped", true, "existing_file_preserved");
           return;
@@ -537,49 +540,60 @@
         writable = await operation(step, row.path, () =>
           handle.createWritable({ keepExistingData: false, mode: "exclusive" }),
         );
-        const reader = response.body.getReader();
         let bytes = 0;
-        const abortRead = () => {
-          reader.cancel().catch(() => {});
-        };
-        runSignal.addEventListener("abort", abortRead, { once: true });
-        try {
-          while (true) {
+        if (response.transferTo) {
+          step = "read_download_stream";
+          bytes = await response.transferTo(writable, (count, stage) => {
             checkStop();
-            step = "read_download_stream";
-            const { done, value } = await reader.read();
-            checkStop();
-            if (done) break;
-            bytes += value.byteLength;
-            if (bytes > row.size || result.bytes + bytes > maxBytes)
+            if (count > row.size || result.bytes + count > maxBytes)
               throw fail("download_size_mismatch");
-            step = "write_local_file";
-            await writable.write(value);
-            const firstChunk = fileBytes === 0;
-            fileBytes = bytes;
-            update("Downloading", firstChunk);
+            fileBytes = count;
+            update(stage, false);
+          });
+        } else {
+          const reader = response.body.getReader();
+          const abortRead = () => {
+            reader.cancel().catch(() => {});
+          };
+          runSignal.addEventListener("abort", abortRead, { once: true });
+          try {
+            while (true) {
+              checkStop();
+              step = "read_download_stream";
+              const { done, value } = await reader.read();
+              checkStop();
+              if (done) break;
+              bytes += value.byteLength;
+              if (bytes > row.size || result.bytes + bytes > maxBytes)
+                throw fail("download_size_mismatch");
+              step = "write_local_file";
+              await writable.write(value);
+              const firstChunk = fileBytes === 0;
+              fileBytes = bytes;
+              update("Downloading", firstChunk);
+            }
+          } finally {
+            runSignal.removeEventListener("abort", abortRead);
+            await reader.cancel().catch(() => {});
+            reader.releaseLock();
           }
-          if (bytes !== row.size) throw fail("download_size_mismatch");
-          checkStop();
-          update("Saving file");
-          step = "save_local_file";
-          await writable.close();
-          writable = null;
-          step = "verify_local_file";
-          if ((await handle.getFile()).size !== row.size)
-            throw fail("local_size_mismatch");
-          reservedBytes -= row.size;
-          reservedFiles--;
-          reserved = false;
-          result.downloaded++;
-          result.bytes += bytes;
-          result.files.push({ path: row.path, bytes, status: "downloaded" });
-          update("Downloaded");
-        } finally {
-          runSignal.removeEventListener("abort", abortRead);
-          await reader.cancel().catch(() => {});
-          reader.releaseLock();
         }
+        if (bytes !== row.size) throw fail("download_size_mismatch");
+        checkStop();
+        update("Saving file");
+        step = "save_local_file";
+        await writable.close();
+        writable = null;
+        step = "verify_local_file";
+        if ((await handle.getFile()).size !== row.size)
+          throw fail("local_size_mismatch");
+        reservedBytes -= row.size;
+        reservedFiles--;
+        reserved = false;
+        result.downloaded++;
+        result.bytes += bytes;
+        result.files.push({ path: row.path, bytes, status: "downloaded" });
+        update("Downloaded");
       } catch (e) {
         const code =
           (runSignal.aborted
@@ -624,8 +638,7 @@
         );
         // Preserve any empty placeholder; report it on the next disk check.
       } finally {
-        if (response?.body && !response.body.locked)
-          await response.body.cancel().catch(() => {});
+        await cancelDownload(response);
         if (reserved) {
           reservedBytes -= row.size;
           reservedFiles--;
@@ -669,6 +682,7 @@
     request = fetch,
     idleMs = 5 * 60 * 1000,
     offset = 0,
+    rangeEnd = null,
     version = null,
     verifyOnly = false,
   }) {
@@ -734,7 +748,8 @@
             : null;
       if (version && currentVersion !== version)
         throw fail("remote_changed_rescan");
-      if (offset && !version) throw fail("resume_version_unavailable");
+      if ((offset || rangeEnd !== null) && !(version || currentVersion))
+        throw fail("resume_version_unavailable");
       if (verifyOnly) {
         clearTimeout(timer);
         return { metadata: sourceMetadata(meta), version: currentVersion };
@@ -760,15 +775,17 @@
         method: "GET",
         credentials: "omit",
         referrerPolicy: "no-referrer",
-        ...(offset ? { headers: { Range: "bytes=" + offset + "-" } } : {}),
+        ...(offset || rangeEnd !== null
+          ? { headers: { Range: "bytes=" + offset + "-" + (rangeEnd ?? "") } }
+          : {}),
         signal: timeout,
       });
       if (!content.ok) throw httpError("download_http_", content);
-      if (offset) {
+      if (offset || rangeEnd !== null) {
         const range = content.headers?.get("Content-Range");
         if (
           content.status !== 206 ||
-          range !== `bytes ${offset}-${row.size - 1}/${row.size}`
+          range !== `bytes ${offset}-${rangeEnd ?? row.size - 1}/${row.size}`
         ) {
           await content.body?.cancel().catch(() => {});
           throw fail("resume_range_unverified");
@@ -848,9 +865,20 @@
     const signal = AbortSignal.any(
       [options.signal, cancelled.signal].filter(Boolean),
     );
+    const startOffset = options.rangeStart ?? 0;
+    const endOffset =
+      options.rangeEnd === undefined ? options.row.size : options.rangeEnd + 1;
+    if (
+      !Number.isSafeInteger(startOffset) ||
+      !Number.isSafeInteger(endOffset) ||
+      startOffset < 0 ||
+      endOffset > options.row.size ||
+      startOffset > endOffset
+    )
+      throw fail("invalid_download_range");
     let retries = 0,
-      offset = 0,
-      version = null,
+      offset = startOffset,
+      version = options.version || null,
       reader,
       initial;
     const check = () => {
@@ -871,6 +899,8 @@
       });
     const retry = async (error) => {
       check();
+      if (options.failOnThrottle && /_http_(429|503)$/.test(error.code || ""))
+        throw error;
       const transient =
         ["TypeError", "TimeoutError"].includes(error.name) ||
         /^(metadata|download)_http_(408|429|500|502|503|504)$/.test(
@@ -881,10 +911,11 @@
       if (
         !transient ||
         retries >= maxRetries ||
-        (offset > 0 && offset >= options.row.size)
+        (offset > startOffset && offset >= endOffset)
       )
         throw error;
-      if (offset && !version) throw fail("resume_version_unavailable");
+      if (offset > startOffset && !version)
+        throw fail("resume_version_unavailable");
       const delay = Math.max(
         retryBaseMs * 2 ** retries,
         error.retryAfterMs || 0,
@@ -934,8 +965,8 @@
             const { done, value } = await reader.read();
             check();
             if (done) {
-              if (offset !== options.row.size) throw fail("download_truncated");
-              if (retries && version)
+              if (offset !== endOffset) throw fail("download_truncated");
+              if ((retries || options.rangeEnd !== undefined) && version)
                 await fetchDownloadAttempt({
                   ...options,
                   signal,
@@ -947,7 +978,7 @@
               controller.close();
               return;
             }
-            if (offset + value.byteLength > options.row.size)
+            if (offset + value.byteLength > endOffset)
               throw fail("download_size_mismatch");
             offset += value.byteLength;
             controller.enqueue(value);
@@ -972,7 +1003,170 @@
         await release();
       },
     });
-    return { body, metadata: initial.metadata };
+    return { body, metadata: initial.metadata, version };
+  }
+  async function cancelDownload(response) {
+    if (response?.cancel) await response.cancel();
+    else if (response?.body && !response.body.locked)
+      await response.body.cancel().catch(() => {});
+  }
+  async function fetchFileDownload(options) {
+    const { streams = 1, largeFileBytes = 256 * 1024 ** 2 } = options;
+    if (
+      ![1, 2, 3].includes(streams) ||
+      !Number.isSafeInteger(largeFileBytes) ||
+      largeFileBytes < 1
+    )
+      throw fail("invalid_stream_count");
+    if (streams === 1 || options.row.size < Math.max(streams, largeFileBytes))
+      return fetchDownload(options);
+    const group = new AbortController();
+    const signal = AbortSignal.any(
+      [options.signal, group.signal].filter(Boolean),
+    );
+    const width = Math.ceil(options.row.size / streams);
+    const ranges = Array.from({ length: streams }, (_, n) => ({
+      rangeStart: n * width,
+      rangeEnd: Math.min((n + 1) * width, options.row.size) - 1,
+    })).filter((r) => r.rangeStart <= r.rangeEnd);
+    const canFallback = (error) =>
+      ["resume_range_unverified", "resume_version_unavailable"].includes(
+        error.code,
+      ) || /_http_(429|503)$/.test(error.code || "");
+    const pause = async (error) => {
+      if (!/_http_(429|503)$/.test(error.code || "")) return;
+      const delay = Math.max(
+        options.retryBaseMs ?? 2000,
+        error.retryAfterMs || 0,
+      );
+      if (delay > (options.retryMaxMs ?? 300000))
+        throw fail("retry_wait_exceeds_budget");
+      options.setStep?.("retry_wait");
+      await new Promise((resolve, reject) => {
+        if (options.signal?.aborted) return reject(options.signal.reason);
+        const abort = () => {
+          clearTimeout(timer);
+          reject(options.signal.reason);
+        };
+        const timer = setTimeout(() => {
+          options.signal?.removeEventListener("abort", abort);
+          resolve();
+        }, delay);
+        options.signal?.addEventListener("abort", abort, { once: true });
+      });
+    };
+    let first;
+    try {
+      first = await fetchDownload({
+        ...options,
+        ...ranges[0],
+        signal,
+        failOnThrottle: true,
+      });
+    } catch (error) {
+      if (options.signal?.aborted || !canFallback(error)) throw error;
+      await pause(error);
+      options.setStep?.("single_stream_fallback");
+      return fetchDownload(options);
+    }
+    let used = false;
+    return {
+      metadata: first.metadata,
+      cancel: async () => {
+        group.abort();
+        await cancelDownload(first);
+      },
+      async transferTo(writable, onProgress) {
+        if (used) throw fail("transfer_already_used");
+        used = true;
+        let total = 0,
+          failure,
+          writes = Promise.resolve();
+        const copy = async (response, position, partSignal, stage) => {
+          const reader = response.body.getReader();
+          try {
+            while (true) {
+              if (partSignal?.aborted) throw partSignal.reason;
+              const { done, value } = await reader.read();
+              if (partSignal?.aborted) throw partSignal.reason;
+              if (done) return;
+              const at = position;
+              const write = writes.then(async () => {
+                if (partSignal?.aborted) throw partSignal.reason;
+                try {
+                  await writable.write({
+                    type: "write",
+                    position: at,
+                    data: value,
+                  });
+                } catch (error) {
+                  error.operation = "write_local_file";
+                  throw error;
+                }
+                total += value.byteLength;
+                onProgress(total, stage);
+              });
+              writes = write.catch(() => {});
+              await write;
+              position += value.byteLength;
+            }
+          } finally {
+            await reader.cancel().catch(() => {});
+            reader.releaseLock();
+          }
+        };
+        const workers = ranges.map(async (range, n) => {
+          try {
+            const response =
+              n === 0
+                ? first
+                : await fetchDownload({
+                    ...options,
+                    ...range,
+                    version: first.version,
+                    signal,
+                    failOnThrottle: true,
+                  });
+            await copy(
+              response,
+              range.rangeStart,
+              signal,
+              `Downloading (${ranges.length} streams)`,
+            );
+          } catch (error) {
+            if (!failure) {
+              failure = error;
+              group.abort(error);
+            }
+          }
+        });
+        await Promise.all(workers);
+        if (!failure) return total;
+        if (
+          options.signal?.aborted ||
+          failure.operation === "write_local_file" ||
+          !canFallback(failure)
+        )
+          throw failure;
+        // Restart only this run's uncommitted scratch write; no existing file is replaced.
+        await pause(failure);
+        options.setStep?.("single_stream_fallback");
+        try {
+          await writable.truncate(0);
+        } catch (error) {
+          error.operation = "write_local_file";
+          throw error;
+        }
+        total = 0;
+        onProgress(0, "Restarting with one stream");
+        const response = await fetchDownload({
+          ...options,
+          version: first.version,
+        });
+        await copy(response, 0, options.signal, "Downloading (1 stream)");
+        return total;
+      },
+    };
   }
   const api = {
     parts,
@@ -983,6 +1177,7 @@
     recoveryPlan,
     applyNativeAudit,
     fetchDownload,
+    fetchFileDownload,
   };
   if (typeof module !== "undefined" && module.exports) {
     module.exports = api;
@@ -1056,6 +1251,24 @@
   }
   parallel.value = "1";
   concurrencyLabel.append(parallel);
+  const streamLabel = el("label", " Large-file streams (256 MiB+) ");
+  const streams = document.createElement("select");
+  streams.setAttribute("aria-label", "Large-file streams");
+  for (const n of [1, 2, 3]) {
+    const option = document.createElement("option");
+    option.value = String(n);
+    option.textContent = String(n);
+    streams.append(option);
+  }
+  streams.value = "1";
+  streamLabel.append(streams);
+  streams.onchange = () => {
+    if (Number(streams.value) > 1) parallel.value = "1";
+  };
+  el(
+    "p",
+    "Two or three streams split each large file into ranges. This mode processes one file at a time; small files use one stream. Unsupported ranges or throttling fall back to one stream.",
+  );
   const runLabel = el("label", " Run budget ");
   const runBudget = document.createElement("select");
   runBudget.setAttribute("aria-label", "Run budget");
@@ -1083,6 +1296,7 @@
     download,
     test,
     parallel,
+    streams,
     runBudget,
     recover,
     importNative,
@@ -1276,7 +1490,7 @@
       window.__oneDriveActivity?.({ stage: "Starting", reset: true });
       result = await populate({
         plan: selectedPlan,
-        concurrency: Number(parallel.value),
+        concurrency: Number(streams.value) > 1 ? 1 : Number(parallel.value),
         maxBytes: (runBudget.value === "large" ? 100 : 5) * 1024 ** 3,
         maxMs: (runBudget.value === "large" ? 12 : 1) * 60 * 60 * 1000,
         root: targetRoot,
@@ -1293,7 +1507,8 @@
             p.errors +
             " issues"),
         fetchFile: (row, signal, setStep) =>
-          fetchDownload({
+          fetchFileDownload({
+            streams: Number(streams.value),
             row,
             base,
             origin: location.origin,
