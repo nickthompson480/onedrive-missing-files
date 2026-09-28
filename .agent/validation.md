@@ -175,3 +175,19 @@ The attended Windows PC downloaded the same archive, verified that hash, expande
 it and loaded the updated browser tool. Its live source inventory completed with
 no issues. Native helper execution awaits approval for a temporary process policy;
 no permanent execution-policy change was made. Live recovery remains unvalidated.
+
+## Version 1.6.1 local evidence (September 28)
+
+The attended v1.6 PowerShell 5.1 helper finished under an approved process-only
+RemoteSigned policy, imported successfully, and recovered three small files
+with zero issues to an ordinary separate Windows folder. Parent policy remained
+Restricted. A subsequent batch was stopped; its large files exposed the absolute
+five-minute timeout and the user reported prior throttling at concurrency three.
+
+v1.6.1: 64 JavaScript tests pass, including an actively progressing transfer
+lasting longer than its idle window, stalled metadata/content, external and
+consumer cancellation, and source identity preservation. 18 Python tests pass
+with two Windows-only skips. Format, build, syntax and whitespace checks pass.
+Synthetic Chromium native import and three-file separate recovery passed with
+concurrency one and Large recovery selected; existing source contents preserved.
+Hosted checks and live updated-build large-transfer acceptance are pending.

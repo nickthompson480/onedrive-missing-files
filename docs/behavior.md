@@ -71,8 +71,11 @@ is not considered present. Matching sizes do not prove identical contents.
 - Closing/reloading the page loses unsaved reports. **Stop downloads** cancels all
   active transfers and stops queued files. Completed files are preserved and skipped on a later check.
 - Inventory bounds: 1,000,000 items, 10,000 requests, 15 minutes, 30 seconds per
-  request. Download bounds: 10,000 files, 5 GiB, one hour, five minutes per file.
-  Choose 1–5 parallel downloads (default 3); all workers share these bounds.
+  request. Download bounds: 10,000 files, with a standard budget of 5 GiB / one hour.
+  The explicit Large recovery setting allows 100 GiB / 12 hours. A request or
+  stream with no progress for five minutes times out; progressing large files
+  can run longer. Choose 1–5 parallel downloads (default 1 to reduce throttling);
+  all workers share the selected run bounds.
   Folders are prepared first. A file/byte budget stops new work while admitted
   transfers finish. Stop and storage/permission failures cancel active transfers.
   Hitting a bound produces a partial report, never a completion claim.

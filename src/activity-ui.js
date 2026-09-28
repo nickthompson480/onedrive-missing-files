@@ -73,7 +73,7 @@
     if (/http_404$/.test(code))
       return "OneDrive returned HTTP 404. Scan again because the remote item or download link may have changed.";
     if (code === "TimeoutError")
-      return "The file request exceeded its five-minute timeout. Check disk for an empty placeholder, then retry with fewer parallel downloads or use OneDrive's own download controls.";
+      return "The file request made no progress for five minutes. Check disk for an empty placeholder, then retry with one download at a time or use OneDrive's own download controls.";
     if (code === "NoModificationAllowedError")
       return "The browser could not lock this file for writing. Stop other tool runs and close applications using the destination, then check disk again.";
     if (code === "AbortError")

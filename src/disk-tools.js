@@ -666,62 +666,122 @@
     signal,
     setStep = () => {},
     request = fetch,
+    idleMs = 5 * 60 * 1000,
   }) {
+    if (!Number.isSafeInteger(idleMs) || idleMs < 1)
+      throw fail("invalid_budget");
     const sourceMetadata =
       typeof module !== "undefined" && module.exports
         ? require("./inventory.js").sourceMetadata
         : window.__oneDriveInventoryLibrary.sourceMetadata;
-    const timeout = AbortSignal.any([
-      signal,
-      AbortSignal.timeout(5 * 60 * 1000),
-    ]);
-    setStep("request_metadata");
-    const response = await request(
-      base + "/items/" + encodeURIComponent(row.id),
-      {
-        method: "GET",
-        credentials: "same-origin",
-        redirect: "error",
-        signal: timeout,
-        headers: { Accept: "application/json" },
-      },
-    );
-    if (!response.ok) throw fail("metadata_http_" + response.status);
-    setStep("read_metadata");
-    const meta = await response.json();
-    if (
-      meta.id !== row.id ||
-      meta.size !== row.size ||
-      meta.name !== row.name ||
-      meta.lastModifiedDateTime !== row.modified ||
-      meta.parentReference?.id !== row.parentId
-    )
-      throw fail("remote_changed_rescan");
-    const link =
-      meta["@microsoft.graph.downloadUrl"] || meta["@content.downloadUrl"];
-    if (typeof link !== "string") throw fail("download_url_missing");
-    const url = new URL(link, origin);
-    if (
-      url.protocol !== "https:" ||
-      url.username ||
-      url.password ||
-      !(
-        url.hostname === "onedrive.live.com" ||
-        url.hostname.endsWith(".files.1drv.com") ||
-        url.hostname.endsWith(".sharepoint.com") ||
-        url.hostname.endsWith(".storage.live.com")
+    const idle = new AbortController();
+    const timeout = AbortSignal.any([signal, idle.signal].filter(Boolean));
+    let timer;
+    const arm = () => {
+      clearTimeout(timer);
+      timer = setTimeout(
+        () =>
+          idle.abort(new DOMException("No download progress", "TimeoutError")),
+        idleMs,
+      );
+    };
+    arm();
+    try {
+      setStep("request_metadata");
+      const response = await request(
+        base + "/items/" + encodeURIComponent(row.id),
+        {
+          method: "GET",
+          credentials: "same-origin",
+          redirect: "error",
+          signal: timeout,
+          headers: { Accept: "application/json" },
+        },
+      );
+      if (!response.ok) throw fail("metadata_http_" + response.status);
+      setStep("read_metadata");
+      const meta = await response.json();
+      arm();
+      if (
+        meta.id !== row.id ||
+        meta.size !== row.size ||
+        meta.name !== row.name ||
+        meta.lastModifiedDateTime !== row.modified ||
+        meta.parentReference?.id !== row.parentId
       )
-    )
-      throw fail("unrecognized_download_host");
-    setStep("request_download");
-    const content = await request(url.href, {
-      method: "GET",
-      credentials: "omit",
-      referrerPolicy: "no-referrer",
-      signal: timeout,
-    });
-    if (!content.ok) throw fail("download_http_" + content.status);
-    return { body: content.body, metadata: sourceMetadata(meta) };
+        throw fail("remote_changed_rescan");
+      const link =
+        meta["@microsoft.graph.downloadUrl"] || meta["@content.downloadUrl"];
+      if (typeof link !== "string") throw fail("download_url_missing");
+      const url = new URL(link, origin);
+      if (
+        url.protocol !== "https:" ||
+        url.username ||
+        url.password ||
+        !(
+          url.hostname === "onedrive.live.com" ||
+          url.hostname.endsWith(".files.1drv.com") ||
+          url.hostname.endsWith(".sharepoint.com") ||
+          url.hostname.endsWith(".storage.live.com")
+        )
+      )
+        throw fail("unrecognized_download_host");
+      setStep("request_download");
+      const content = await request(url.href, {
+        method: "GET",
+        credentials: "omit",
+        referrerPolicy: "no-referrer",
+        signal: timeout,
+      });
+      if (!content.ok) throw fail("download_http_" + content.status);
+      const metadata = sourceMetadata(meta);
+      if (!content.body) throw fail("download_body_missing");
+      const reader = content.body.getReader();
+      let onAbort,
+        settled = false;
+      const cleanup = () => {
+        settled = true;
+        clearTimeout(timer);
+        timeout.removeEventListener("abort", onAbort);
+      };
+      const body = new ReadableStream({
+        start(controller) {
+          onAbort = () => {
+            cleanup();
+            reader.cancel(timeout.reason).catch(() => {});
+            controller.error(timeout.reason);
+          };
+          timeout.addEventListener("abort", onAbort, { once: true });
+          if (timeout.aborted) onAbort();
+        },
+        async pull(controller) {
+          try {
+            const chunk = await reader.read();
+            if (settled) return;
+            if (chunk.done) {
+              cleanup();
+              controller.close();
+            } else {
+              arm();
+              controller.enqueue(chunk.value);
+            }
+          } catch (error) {
+            if (!settled) {
+              cleanup();
+              controller.error(error);
+            }
+          }
+        },
+        cancel(reason) {
+          cleanup();
+          return reader.cancel(reason);
+        },
+      });
+      return { body, metadata };
+    } catch (error) {
+      clearTimeout(timer);
+      throw error;
+    }
   }
   const api = {
     parts,
@@ -803,8 +863,21 @@
     option.textContent = String(n);
     parallel.append(option);
   }
-  parallel.value = "3";
+  parallel.value = "1";
   concurrencyLabel.append(parallel);
+  const runLabel = el("label", " Run budget ");
+  const runBudget = document.createElement("select");
+  runBudget.setAttribute("aria-label", "Run budget");
+  for (const [value, label] of [
+    ["standard", "Standard: 5 GiB / 1 hour"],
+    ["large", "Large recovery: 100 GiB / 12 hours"],
+  ]) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    runBudget.append(option);
+  }
+  runLabel.append(runBudget);
   const detail = el("pre", "");
   let root, plan, result, controller, inventory;
   const scanButton = [...section.querySelectorAll("button")].find(
@@ -819,6 +892,7 @@
     download,
     test,
     parallel,
+    runBudget,
     recover,
     importNative,
     recoverMissing,
@@ -1012,6 +1086,8 @@
       result = await populate({
         plan: selectedPlan,
         concurrency: Number(parallel.value),
+        maxBytes: (runBudget.value === "large" ? 100 : 5) * 1024 ** 3,
+        maxMs: (runBudget.value === "large" ? 12 : 1) * 60 * 60 * 1000,
         root: targetRoot,
         signal: controller.signal,
         activity: (entry) => window.__oneDriveActivity?.(entry),

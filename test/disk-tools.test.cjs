@@ -314,6 +314,8 @@ test("browser controls bound sample downloads and prevent closing during writes"
     location: { origin: "https://onedrive.live.com" },
     URL,
     Blob,
+    ReadableStream,
+    DOMException,
     AbortController,
     AbortSignal,
     setTimeout,
@@ -347,7 +349,7 @@ test("browser controls bound sample downloads and prevent closing during writes"
   await button("Choose local folder").onclick();
   await button("Check disk").onclick();
   const setting = nodes.find((x) => x.tag === "select");
-  assert.equal(setting.value, "3");
+  assert.equal(setting.value, "1");
   assert.equal(setting.children.length, 5);
   const run = button("Test 3 small files").onclick();
   assert.equal(setting.disabled, true);
@@ -356,7 +358,7 @@ test("browser controls bound sample downloads and prevent closing during writes"
   release();
   await run;
   assert.equal(browser.__oneDriveDownloadResult.downloaded, 3);
-  assert.equal(browser.__oneDriveDownloadResult.concurrency, 3);
+  assert.equal(browser.__oneDriveDownloadResult.concurrency, 1);
   assert.equal(setting.disabled, false);
   assert.equal(browser.__oneDriveDownloadResult.scope, "small_file_test");
   assert.equal(browser.__oneDriveDiskPlan.items.length, 5);

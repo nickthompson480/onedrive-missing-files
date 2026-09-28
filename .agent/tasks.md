@@ -69,4 +69,11 @@ tags: []
 - [x] Obtain user direction to proceed with publishing/download/use.
 - [x] Run hosted checks and release.
 - [x] Download, checksum-verify and load v1.6 on the attended Windows PC.
-- [ ] Complete attended Windows helper/import/recovery acceptance.
+- [x] Complete attended Windows helper/import/three-file recovery acceptance.
+- [ ] Complete full attended recovery and restricted-file handling.
+
+## Version 1.6.1 large transfers
+
+- [x] Default to one download, use idle timeout and expose a larger bounded run.
+- [x] Verify local streaming regression tests and synthetic Chromium controls.
+- [ ] Pass hosted checks, publish and verify release; resume attended recovery.

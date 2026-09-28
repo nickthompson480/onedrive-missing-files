@@ -50,7 +50,10 @@ as the recovery folder. Source requests remain GET-only; imported URLs and
 credentials are never used. Imported metadata selects current inventory rows;
 source identity is checked again before each download.
 
-Runs retain the 5 GiB/10,000-file/one-hour bounds and five-minute per-file timeout.
+Runs default to one download at a time and 5 GiB/10,000-file/one-hour bounds.
+Choose Large recovery explicitly for 100 GiB / 12 hours (still 10,000 files).
+Only a request or stream with no progress for five minutes times out; large
+files may continue while receiving data.
 Repeat the relevant recovery button for another batch. Review any timeout or
 empty-file conflict before continuing. Save disk reports for results and keep
 all reports private. Browser-restricted file types still need the separate ZIP

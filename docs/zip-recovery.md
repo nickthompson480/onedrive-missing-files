@@ -10,7 +10,7 @@ SHA-256 and dates. The tool verifies the content against OneDrive's hash before
 packing and verifies the saved ZIP. It creates the ZIP locally from existing
 OneDrive GET downloads; it does not call an undocumented Microsoft ZIP service.
 Limits: 1,000 files, 16 MiB per file, 64 MiB total source bytes, 15 minutes per
-export, five minutes per request. Only one ZIP is processed at a time. Stop keeps
+export, five minutes without request/stream progress. Only one ZIP is processed at a time. Stop keeps
 completed ZIPs. A failed ZIP may remain incomplete and is never reported verified.
 
 The browser cannot expand restricted filenames into place. Use the included
